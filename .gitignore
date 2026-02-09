@@ -1,7 +1,12 @@
 target/
-Cargo.lock
 
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Config contains API keys
+config.json
+
+# Backup files created by exif-ai
+*.bak

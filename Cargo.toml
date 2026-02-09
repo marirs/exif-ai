@@ -1,0 +1,45 @@
+[package]
+name = "exif-ai"
+version = "0.1.0"
+edition = "2024"
+description = "AI-powered EXIF metadata writer — generate SEO titles, descriptions, tags, GPS, and subject data for images"
+license = "MIT"
+repository = "https://github.com/marirs/exif-ai"
+authors = ["Sriram Govindan"]
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Image handling
+image = "0.25"
+base64 = "0.22"
+
+# EXIF read
+nom-exif = "2.7"
+
+# EXIF/metadata write
+little_exif = "0.4"
+
+# Logging
+env_logger = "0.11"
+log = "0.4"
+
+# Error handling
+anyhow = "1"
+
+# Async trait
+async-trait = "0.1"
+
+# File walking
+walkdir = "2"
