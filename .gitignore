@@ -11,3 +11,8 @@ config.json
 
 # Backup files created by exif-ai
 *.bak
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.hiec
