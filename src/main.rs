@@ -1,11 +1,8 @@
-mod ai;
-mod config;
-mod exif;
-mod pipeline;
-
 use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
+
+use exif_ai::{config, pipeline};
 
 #[derive(Parser, Debug)]
 #[command(

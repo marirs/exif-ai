@@ -7,6 +7,14 @@ license = "MIT"
 repository = "https://github.com/marirs/exif-ai"
 authors = ["Sriram Govindan"]
 
+[lib]
+name = "exif_ai"
+path = "src/lib.rs"
+
+[[bin]]
+name = "exif-ai"
+path = "src/main.rs"
+
 [dependencies]
 # CLI
 clap = { version = "4", features = ["derive"] }
