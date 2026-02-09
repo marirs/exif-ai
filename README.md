@@ -17,7 +17,14 @@ AI-powered EXIF metadata writer — generate SEO titles, descriptions, tags, GPS
 
 ## Installation
 
-### From Source
+### As a Library
+
+```toml
+[dependencies]
+exif-ai = { version = "0.1", default-features = false }
+```
+
+### CLI Binary (from source)
 
 ```bash
 git clone https://github.com/marirs/exif-ai.git
@@ -25,7 +32,7 @@ cd exif-ai
 cargo build --release
 ```
 
-The binary will be at `target/release/exif-ai`.
+The binary will be at `target/release/exif-ai-cli`.
 
 ### Cross-Compilation Targets
 
@@ -47,26 +54,26 @@ cargo build --release --target aarch64-pc-windows-msvc
 
 ```bash
 # 1. Generate a default config file
-exif-ai --init
+exif-ai-cli --init
 
 # 2. Edit config.json and add your API key(s)
 
 # 3. Process a single image (dry run first)
-exif-ai --dry-run photo.jpg
+exif-ai-cli --dry-run photo.jpg
 
 # 4. Process for real
-exif-ai photo.jpg
+exif-ai-cli photo.jpg
 
 # 5. Process an entire folder
-exif-ai ./photos/
+exif-ai-cli ./photos/
 
 # 6. Process multiple files with JSON output
-exif-ai --json photo1.jpg photo2.jpg
+exif-ai-cli --json photo1.jpg photo2.jpg
 ```
 
 ## Configuration
 
-Run `exif-ai --init` to generate a default `config.json` in the same directory as the binary.
+Run `exif-ai-cli --init` to generate a default `config.json` in the same directory as the binary.
 
 ```json
 {
@@ -160,7 +167,7 @@ AI-generated metadata is written to **three industry standards** simultaneously 
 ## CLI Reference
 
 ```
-Usage: exif-ai [OPTIONS] [PATH]...
+Usage: exif-ai-cli [OPTIONS] [PATH]...
 
 Arguments:
   [PATH]...  Image files or directories to process
