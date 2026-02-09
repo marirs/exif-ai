@@ -1,0 +1,38 @@
+{
+  "ai_services": {
+    "openai": {
+      "api_key": "",
+      "model": "gpt-4o-mini",
+      "enabled": true
+    },
+    "gemini": {
+      "api_key": "",
+      "model": "gemini-2.0-flash",
+      "enabled": false
+    },
+    "cloudflare": {
+      "account_id": "",
+      "api_token": "",
+      "model": "@cf/llava-hf/llava-1.5-7b-hf",
+      "enabled": false
+    }
+  },
+  "service_order": [
+    "openai",
+    "gemini",
+    "cloudflare"
+  ],
+  "exif_fields": {
+    "write_title": true,
+    "write_description": true,
+    "write_tags": true,
+    "write_gps": true,
+    "write_subject": true,
+    "overwrite_existing": false
+  },
+  "output": {
+    "dry_run": false,
+    "backup_originals": true,
+    "log_file": null
+  }
+}
