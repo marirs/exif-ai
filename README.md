@@ -115,15 +115,47 @@ Configure one or more AI services. The `service_order` array determines the fail
 | **Google Gemini** | Free tier: 15 req/min, 1,500/day | Great balance of quality and cost |
 | **Cloudflare Workers AI** (LLaVA) | Free tier: ~100-200 images/day | Free but lower quality |
 
-### EXIF Fields Written
+### Metadata Written (Cross-Platform)
 
-| AI Output | EXIF Tags | Notes |
-|-----------|-----------|-------|
-| Title | `ImageDescription`, `XPTitle` | SEO title, max 60 chars |
-| Description | `UserComment`, `XPComment` | SEO description, max 254 chars |
-| Tags | `XPKeywords` | Semicolon-separated keywords |
-| Subject | `XPSubject` | Identified people, animals, landmarks |
-| GPS | `GPSLatitude`, `GPSLongitude` + refs | Only if no existing GPS AND location identified |
+AI-generated metadata is written to **three industry standards** simultaneously for maximum compatibility across all platforms and tools:
+
+#### EXIF (APP1 — TIFF/IFD)
+
+| AI Output | EXIF Tags | IFD |
+|-----------|-----------|-----|
+| Title | `ImageDescription` (0x010E), `XPTitle` | IFD0 |
+| Description | `UserComment` (0x9286), `XPComment` | ExifIFD / IFD0 |
+| Tags | `XPKeywords` | IFD0 |
+| Subject | `XPSubject` | IFD0 |
+| GPS | `GPSLatitude`, `GPSLongitude` + refs | GPSIFD |
+
+#### XMP (APP1 — XML)
+
+| AI Output | XMP Property | Notes |
+|-----------|-------------|-------|
+| Title | `dc:title`, `photoshop:Headline` | Read by macOS, Linux, Adobe tools |
+| Description | `dc:description` | Read by macOS Finder, Spotlight |
+| Tags | `dc:subject` | Read by macOS, Lightroom, digiKam |
+
+#### IPTC-IIM (APP13 — Photoshop 3.0)
+
+| AI Output | IPTC Record | Notes |
+|-----------|-------------|-------|
+| Title | Object Name (2:5) | Read by older tools, Windows |
+| Description | Caption/Abstract (2:120) | Broad compatibility |
+| Tags | Keywords (2:25) | One record per keyword |
+
+#### Platform Compatibility
+
+| Platform | What's read |
+|----------|-------------|
+| **macOS** (Finder, Preview, Spotlight) | XMP, IPTC, EXIF ImageDescription |
+| **Windows** (Explorer, Properties) | EXIF XP* tags, IPTC |
+| **Linux** (digiKam, Shotwell, GNOME) | XMP, IPTC |
+| **Adobe** (Lightroom, Photoshop, Bridge) | XMP, IPTC, EXIF |
+| **exiftool** | All three standards |
+
+> **Note:** GPS coordinates are only written when the image has no existing GPS data AND the AI identifies a known, real-world location.
 
 ## CLI Reference
 
@@ -142,6 +174,16 @@ Options:
   -h, --help           Print help
   -V, --version        Print version
 ```
+
+## How It Works
+
+1. **Read** — Existing EXIF data is read using `nom-exif` (supports big-endian iPhone JPEGs, HEIC, RAW)
+2. **Analyze** — The image is sent to the configured AI vision model for analysis
+3. **Write** — AI-generated metadata is surgically injected into the file:
+   - Original EXIF data is fully preserved (camera info, GPS, lens data, timestamps, etc.)
+   - New tags are written to EXIF, XMP, and IPTC simultaneously
+   - A `.bak` backup is created before any modification
+4. **Verify** — Use `--dry-run` to preview what would be written without modifying files
 
 ## Supported Image Formats
 
