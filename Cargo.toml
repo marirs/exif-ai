@@ -30,6 +30,7 @@ nom-exif = "2.7"
 
 # EXIF/metadata write
 little_exif = "0.4"
+img-parts = "0.3"
 
 # Logging
 env_logger = "0.11"

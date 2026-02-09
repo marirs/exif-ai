@@ -119,38 +119,38 @@ async fn main() -> Result<()> {
         if let Some(ref err) = result.error {
             log::error!("  Error: {err}");
         } else {
-            let mut written = Vec::new();
-            if result.title_written {
-                written.push("title");
-            }
-            if result.description_written {
-                written.push("description");
-            }
-            if result.tags_written {
-                written.push("tags");
-            }
-            if result.gps_written {
-                written.push("gps");
-            }
-            if result.subject_written {
-                written.push("subject");
-            }
-
-            if !written.is_empty() {
-                let action = if config.output.dry_run {
-                    "Would write"
-                } else {
-                    "Wrote"
-                };
-                log::info!("  {action}: {}", written.join(", "));
-            }
-
-            if !result.skipped_fields.is_empty() {
-                log::info!("  Skipped: {}", result.skipped_fields.join(", "));
-            }
-
             if let Some(ref service) = result.ai_service_used {
                 log::info!("  AI service: {service}");
+            }
+
+            // Show EXIF preview table
+            if config.output.dry_run {
+                print_exif_preview(&result);
+            } else {
+                let mut written = Vec::new();
+                if result.title_written {
+                    written.push("title");
+                }
+                if result.description_written {
+                    written.push("description");
+                }
+                if result.tags_written {
+                    written.push("tags");
+                }
+                if result.gps_written {
+                    written.push("gps");
+                }
+                if result.subject_written {
+                    written.push("subject");
+                }
+
+                if !written.is_empty() {
+                    log::info!("  Wrote: {}", written.join(", "));
+                }
+
+                if !result.skipped_fields.is_empty() {
+                    log::info!("  Skipped: {}", result.skipped_fields.join(", "));
+                }
             }
         }
 
@@ -186,4 +186,199 @@ async fn main() -> Result<()> {
     log::info!("Done: {success} succeeded, {failed} failed out of {total} images");
 
     Ok(())
+}
+
+// ANSI color codes
+const GREEN: &str = "\x1b[32m";
+const DIM: &str = "\x1b[2m";
+const RESET: &str = "\x1b[0m";
+const BOLD: &str = "\x1b[1m";
+
+/// Print an EXIF preview table showing existing data and new AI values for dry-run mode.
+fn print_exif_preview(result: &pipeline::ProcessResult) {
+    let existing = &result.existing_exif;
+    let ai = match &result.ai_result {
+        Some(ai) => ai,
+        None => return,
+    };
+
+    println!();
+    println!("  {BOLD}EXIF Data:{RESET}");
+    println!("  {DIM}{}{RESET}", "─".repeat(72));
+
+    // --- Existing standard EXIF fields ---
+    print_existing("Make", existing.make.as_deref());
+    print_existing("Model", existing.model.as_deref());
+    print_existing("LensModel", existing.lens_model.as_deref());
+    print_existing("DateTimeOriginal", existing.date_time.as_deref());
+    print_existing("ExposureTime", existing.exposure_time.as_deref());
+    print_existing("FNumber", existing.f_number.as_deref());
+    print_existing("ISO", existing.iso.as_deref());
+    print_existing("FocalLength", existing.focal_length.as_deref());
+    print_existing("ColorSpace", existing.color_space.as_deref());
+    print_existing("Orientation", existing.orientation.as_deref());
+    print_existing("Software", existing.software.as_deref());
+
+    // Image dimensions
+    if let (Some(w), Some(h)) = (&existing.image_width, &existing.image_height) {
+        print_existing_val("ImageSize", &format!("{w} x {h}"));
+    }
+
+    print_existing("XResolution", existing.x_resolution.as_deref());
+    print_existing("YResolution", existing.y_resolution.as_deref());
+
+    // GPS (existing)
+    if existing.has_gps {
+        let lat = existing.gps_latitude.unwrap_or(0.0);
+        let lon = existing.gps_longitude.unwrap_or(0.0);
+        print_existing_val("GPSLatitude", &format!("{lat:.6}"));
+        print_existing_val("GPSLongitude", &format!("{lon:.6}"));
+    }
+
+    // --- Existing writable fields (may be overwritten) ---
+    print_existing("ImageDescription", existing.title.as_deref());
+    print_existing("UserComment", existing.description.as_deref());
+    print_existing("XPKeywords", existing.keywords.as_deref());
+    print_existing("XPSubject", existing.subject.as_deref());
+
+    // --- Separator before new AI values ---
+    println!("  {DIM}{}{RESET}", "─".repeat(72));
+    println!("  {BOLD}New (AI-generated):{RESET}");
+    println!("  {DIM}{}{RESET}", "─".repeat(72));
+
+    // Title
+    if let Some(ref title) = ai.title {
+        if result.title_written {
+            print_new("ImageDescription", title);
+            print_new("XPTitle", title);
+        } else {
+            print_skipped("ImageDescription", "(exists, skipped)");
+        }
+    }
+
+    // Description
+    if let Some(ref desc) = ai.description {
+        if result.description_written {
+            print_new("UserComment", desc);
+            print_new("XPComment", desc);
+        } else {
+            print_skipped("UserComment", "(exists, skipped)");
+        }
+    }
+
+    // Tags
+    if let Some(ref tags) = ai.tags {
+        let kw = tags.join("; ");
+        if result.tags_written {
+            print_new("XPKeywords", &kw);
+        } else {
+            print_skipped("XPKeywords", "(exists, skipped)");
+        }
+    }
+
+    // Subject
+    if let Some(ref subjects) = ai.subject {
+        if !subjects.is_empty() {
+            let subj = subjects.join("; ");
+            if result.subject_written {
+                print_new("XPSubject", &subj);
+            } else {
+                print_skipped("XPSubject", "(exists, skipped)");
+            }
+        }
+    }
+
+    // GPS (new)
+    if let Some(ref gps) = ai.gps {
+        if result.gps_written {
+            print_new("GPSLatitude", &format!("{:.6}", gps.latitude));
+            print_new("GPSLongitude", &format!("{:.6}", gps.longitude));
+        } else if existing.has_gps {
+            print_skipped("GPS", "(exists, skipped)");
+        }
+    }
+
+    println!("  {DIM}{}{RESET}", "─".repeat(72));
+    println!("  {GREEN}*{RESET} = new value to be written");
+    println!();
+}
+
+/// Max width for the value column before wrapping.
+const VAL_WIDTH: usize = 46;
+/// Indent for continuation lines (tag column width + " : " = 25 chars + 2 leading spaces).
+const INDENT: &str = "                           ";
+
+/// Print an existing EXIF field row.
+fn print_existing(tag: &str, value: Option<&str>) {
+    if let Some(val) = value {
+        if !val.is_empty() {
+            print_existing_val(tag, val);
+        }
+    }
+}
+
+/// Print an existing EXIF value row.
+fn print_existing_val(tag: &str, val: &str) {
+    let tag_col = format!("{:<22}", tag);
+    let lines = wrap_text(val, VAL_WIDTH);
+    for (i, line) in lines.iter().enumerate() {
+        if i == 0 {
+            println!("  {tag_col} : {line}");
+        } else {
+            println!("  {INDENT}{line}");
+        }
+    }
+}
+
+/// Print a new AI-generated value row (green with *).
+fn print_new(tag: &str, val: &str) {
+    let tag_col = format!("{:<22}", tag);
+    let lines = wrap_text(val, VAL_WIDTH);
+    for (i, line) in lines.iter().enumerate() {
+        if i == 0 {
+            if lines.len() == 1 {
+                println!("  {GREEN}{tag_col} : {line} *{RESET}");
+            } else {
+                println!("  {GREEN}{tag_col} : {line}{RESET}");
+            }
+        } else if i == lines.len() - 1 {
+            println!("  {GREEN}{INDENT}{line} *{RESET}");
+        } else {
+            println!("  {GREEN}{INDENT}{line}{RESET}");
+        }
+    }
+}
+
+/// Print a skipped field row (dimmed).
+fn print_skipped(tag: &str, reason: &str) {
+    let tag_col = format!("{:<22}", tag);
+    println!("  {DIM}{tag_col} : {reason}{RESET}");
+}
+
+/// Wrap text at word boundaries to fit within max_width.
+fn wrap_text(s: &str, max_width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut current_line = String::new();
+
+    for word in s.split_whitespace() {
+        if current_line.is_empty() {
+            current_line = word.to_string();
+        } else if current_line.len() + 1 + word.len() <= max_width {
+            current_line.push(' ');
+            current_line.push_str(word);
+        } else {
+            lines.push(current_line);
+            current_line = word.to_string();
+        }
+    }
+
+    if !current_line.is_empty() {
+        lines.push(current_line);
+    }
+
+    if lines.is_empty() {
+        lines.push(s.to_string());
+    }
+
+    lines
 }

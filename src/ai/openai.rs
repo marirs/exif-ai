@@ -31,6 +31,10 @@ impl AiService for OpenAiService {
             "model": self.model,
             "messages": [
                 {
+                    "role": "system",
+                    "content": "You are an image analysis assistant. You MUST respond with valid JSON only. No markdown, no code blocks, no extra text. All string values MUST be enclosed in double quotes."
+                },
+                {
                     "role": "user",
                     "content": [
                         {
@@ -47,7 +51,8 @@ impl AiService for OpenAiService {
                     ]
                 }
             ],
-            "max_tokens": 1000
+            "max_tokens": 1000,
+            "response_format": { "type": "json_object" }
         });
 
         let resp = self
