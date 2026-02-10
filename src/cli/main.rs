@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
 
-use exif_ai::{config, pipeline};
+use exif_ai::{config, exif, pipeline};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -34,6 +34,14 @@ struct Cli {
     /// Verbose output
     #[arg(short, long)]
     verbose: bool,
+
+    /// Display all EXIF metadata and exit
+    #[arg(long = "show-exif")]
+    show_exif: bool,
+
+    /// Clear all EXIF/XMP/IPTC metadata from the image(s)
+    #[arg(long = "clear-exif")]
+    clear_exif: bool,
 }
 
 #[tokio::main]
@@ -59,17 +67,50 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // Validate inputs for non-init commands
+    if !cli.init && cli.paths.is_empty() {
+        anyhow::bail!("No input files or directories specified. Use --help for usage.");
+    }
+
+    // Handle --show-exif
+    if cli.show_exif {
+        let images = pipeline::collect_images(&cli.paths);
+        if images.is_empty() {
+            anyhow::bail!("No supported image files found in the specified paths.");
+        }
+        for image_path in &images {
+            print_full_exif(image_path)?;
+        }
+        return Ok(());
+    }
+
+    // Handle --clear-exif
+    if cli.clear_exif {
+        let images = pipeline::collect_images(&cli.paths);
+        if images.is_empty() {
+            anyhow::bail!("No supported image files found in the specified paths.");
+        }
+        for image_path in &images {
+            let kind = pipeline::ImageKind::from_path(image_path);
+            match kind {
+                Some(k) => {
+                    match exif::clear_exif(image_path, k) {
+                        Ok(()) => log::info!("Cleared EXIF: {}", image_path.display()),
+                        Err(e) => log::error!("Failed to clear {}: {e}", image_path.display()),
+                    }
+                }
+                None => log::warn!("Unsupported format: {}", image_path.display()),
+            }
+        }
+        return Ok(());
+    }
+
     // Load config
     let mut config = config::Config::load(cli.config.as_deref())?;
 
     // Override dry_run from CLI flag
     if cli.dry_run {
         config.output.dry_run = true;
-    }
-
-    // Validate inputs
-    if cli.paths.is_empty() {
-        anyhow::bail!("No input files or directories specified. Use --help for usage.");
     }
 
     // Collect images
@@ -355,6 +396,135 @@ fn print_new(tag: &str, val: &str) {
 fn print_skipped(tag: &str, reason: &str) {
     let tag_col = format!("{:<22}", tag);
     println!("  {DIM}{tag_col} : {reason}{RESET}");
+}
+
+/// Print full EXIF metadata for a file, organized by section.
+fn print_full_exif(path: &std::path::Path) -> Result<()> {
+    let data = exif::read_exif(path)?;
+
+    println!();
+    println!("{BOLD}File:{RESET} {}", path.display());
+    println!("{DIM}{}{RESET}", "═".repeat(72));
+
+    // --- Camera / Device ---
+    let camera_fields: Vec<(&str, Option<&str>)> = vec![
+        ("Make", data.make.as_deref()),
+        ("Model", data.model.as_deref()),
+        ("LensModel", data.lens_model.as_deref()),
+        ("Software", data.software.as_deref()),
+    ];
+    if camera_fields.iter().any(|(_, v)| v.is_some()) {
+        println!("  {BOLD}Camera / Device{RESET}");
+        println!("  {DIM}{}{RESET}", "─".repeat(70));
+        for (tag, val) in &camera_fields {
+            if let Some(v) = val {
+                print_row(tag, v);
+            }
+        }
+        println!();
+    }
+
+    // --- Capture Settings ---
+    let capture_fields: Vec<(&str, Option<&str>)> = vec![
+        ("DateTimeOriginal", data.date_time.as_deref()),
+        ("ExposureTime", data.exposure_time.as_deref()),
+        ("FNumber", data.f_number.as_deref()),
+        ("ISO", data.iso.as_deref()),
+        ("FocalLength", data.focal_length.as_deref()),
+        ("Orientation", data.orientation.as_deref()),
+    ];
+    if capture_fields.iter().any(|(_, v)| v.is_some()) {
+        println!("  {BOLD}Capture Settings{RESET}");
+        println!("  {DIM}{}{RESET}", "─".repeat(70));
+        for (tag, val) in &capture_fields {
+            if let Some(v) = val {
+                print_row(tag, v);
+            }
+        }
+        println!();
+    }
+
+    // --- Image Properties ---
+    let mut image_fields: Vec<(&str, Option<String>)> = vec![
+        ("ColorSpace", data.color_space.clone()),
+        ("XResolution", data.x_resolution.clone()),
+        ("YResolution", data.y_resolution.clone()),
+    ];
+    if let (Some(w), Some(h)) = (&data.image_width, &data.image_height) {
+        image_fields.insert(0, ("ImageSize", Some(format!("{w} x {h}"))));
+    }
+    if image_fields.iter().any(|(_, v)| v.is_some()) {
+        println!("  {BOLD}Image Properties{RESET}");
+        println!("  {DIM}{}{RESET}", "─".repeat(70));
+        for (tag, val) in &image_fields {
+            if let Some(v) = val {
+                print_row(tag, v);
+            }
+        }
+        println!();
+    }
+
+    // --- GPS ---
+    if data.has_gps {
+        println!("  {BOLD}GPS{RESET}");
+        println!("  {DIM}{}{RESET}", "─".repeat(70));
+        if let Some(lat) = data.gps_latitude {
+            print_row("GPSLatitude", &format!("{lat:.6}"));
+        }
+        if let Some(lon) = data.gps_longitude {
+            print_row("GPSLongitude", &format!("{lon:.6}"));
+        }
+        println!();
+    }
+
+    // --- AI / Descriptive Metadata ---
+    let desc_fields: Vec<(&str, Option<&str>)> = vec![
+        ("ImageDescription", data.title.as_deref()),
+        ("UserComment", data.description.as_deref()),
+        ("XPKeywords", data.keywords.as_deref()),
+        ("XPSubject", data.subject.as_deref()),
+    ];
+    if desc_fields.iter().any(|(_, v)| v.is_some()) {
+        println!("  {BOLD}Descriptive Metadata{RESET}");
+        println!("  {DIM}{}{RESET}", "─".repeat(70));
+        for (tag, val) in &desc_fields {
+            if let Some(v) = val {
+                print_row(tag, v);
+            }
+        }
+        println!();
+    }
+
+    // If completely empty
+    let has_any = data.make.is_some()
+        || data.model.is_some()
+        || data.date_time.is_some()
+        || data.exposure_time.is_some()
+        || data.image_width.is_some()
+        || data.has_gps
+        || data.title.is_some()
+        || data.description.is_some()
+        || data.keywords.is_some()
+        || data.software.is_some();
+    if !has_any {
+        println!("  {DIM}(no EXIF metadata found){RESET}");
+        println!();
+    }
+
+    Ok(())
+}
+
+/// Print a single row in the EXIF display table.
+fn print_row(tag: &str, val: &str) {
+    let tag_col = format!("{:<22}", tag);
+    let lines = wrap_text(val, VAL_WIDTH);
+    for (i, line) in lines.iter().enumerate() {
+        if i == 0 {
+            println!("  {tag_col} : {line}");
+        } else {
+            println!("  {INDENT}{line}");
+        }
+    }
 }
 
 /// Wrap text at word boundaries to fit within max_width.

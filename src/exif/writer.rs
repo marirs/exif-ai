@@ -122,6 +122,101 @@ fn load_existing_metadata(path: &Path) -> Option<Metadata> {
     }
 }
 
+/// Clear all EXIF/XMP/IPTC metadata from an image file.
+///
+/// Supports JPEG, PNG, WebP, and TIFF formats. For sidecar formats (HEIC, RAW),
+/// this removes the `.xmp` sidecar file if it exists.
+///
+/// # Arguments
+///
+/// * `path` — Path to the image file
+/// * `image_kind` — The format of the image
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use exif_ai::exif::clear_exif;
+/// use exif_ai::pipeline::ImageKind;
+/// use std::path::Path;
+///
+/// let path = Path::new("photo.jpg");
+/// clear_exif(path, ImageKind::Jpeg)?;
+/// # Ok::<(), anyhow::Error>(())
+/// ```
+pub fn clear_exif(path: &Path, image_kind: ImageKind) -> Result<()> {
+    match image_kind {
+        ImageKind::Jpeg => {
+            let file_bytes = std::fs::read(path)
+                .with_context(|| format!("Failed to read {}", path.display()))?;
+            let mut jpeg = Jpeg::from_bytes(Bytes::from(file_bytes))
+                .map_err(|e| anyhow::anyhow!("Failed to parse JPEG: {e}"))?;
+
+            // Remove EXIF (APP1 EXIF)
+            jpeg.set_exif(None);
+
+            // Remove XMP (APP1 XMP) and IPTC (APP13) segments
+            let segments = jpeg.segments_mut();
+            segments.retain(|seg| {
+                let marker = seg.marker();
+                let data = seg.contents();
+                // Remove APP1 XMP segments
+                if marker == 0xE1 && data.len() > 29 && data.starts_with(b"http://ns.adobe.com/xap/1.0/\0") {
+                    return false;
+                }
+                // Remove APP13 IPTC segments
+                if marker == 0xED {
+                    return false;
+                }
+                true
+            });
+
+            let mut out = Vec::new();
+            jpeg.encoder().write_to(&mut out)?;
+            std::fs::write(path, out)
+                .with_context(|| format!("Failed to write {}", path.display()))?;
+        }
+        ImageKind::Png => {
+            use img_parts::png::Png;
+            let file_bytes = std::fs::read(path)
+                .with_context(|| format!("Failed to read {}", path.display()))?;
+            let mut png = Png::from_bytes(Bytes::from(file_bytes))
+                .map_err(|e| anyhow::anyhow!("Failed to parse PNG: {e}"))?;
+            png.set_exif(None);
+            let mut out = Vec::new();
+            png.encoder().write_to(&mut out)?;
+            std::fs::write(path, out)
+                .with_context(|| format!("Failed to write {}", path.display()))?;
+        }
+        ImageKind::WebP => {
+            use img_parts::webp::WebP;
+            let file_bytes = std::fs::read(path)
+                .with_context(|| format!("Failed to read {}", path.display()))?;
+            let mut webp = WebP::from_bytes(Bytes::from(file_bytes))
+                .map_err(|e| anyhow::anyhow!("Failed to parse WebP: {e}"))?;
+            webp.set_exif(None);
+            let mut out = Vec::new();
+            webp.encoder().write_to(&mut out)?;
+            std::fs::write(path, out)
+                .with_context(|| format!("Failed to write {}", path.display()))?;
+        }
+        ImageKind::Tiff => {
+            anyhow::bail!("Clearing EXIF from TIFF files is not supported — EXIF is integral to the TIFF structure");
+        }
+        ImageKind::Sidecar => {
+            // Remove the sidecar XMP file if it exists
+            let xmp_path = path.with_extension("xmp");
+            if xmp_path.exists() {
+                std::fs::remove_file(&xmp_path)
+                    .with_context(|| format!("Failed to remove sidecar {}", xmp_path.display()))?;
+                log::info!("Removed sidecar: {}", xmp_path.display());
+            } else {
+                log::info!("No sidecar XMP found for {}", path.display());
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Write AI-generated metadata into an image file, preserving all existing data.
 ///
 /// This is the format-aware metadata writer. It routes to the correct strategy
@@ -2032,6 +2127,123 @@ mod tests {
         let after = crate::exif::read_exif(&path).unwrap();
         assert_eq!(after.make.as_deref(), Some("Apple"));
         assert!(after.has_gps); // original GPS preserved
+    }
+
+    // ── clear_exif tests ─────────────────────────────────────────────
+
+    #[test]
+    fn clear_exif_jpeg_removes_metadata() {
+        let (_dir, path) = copy_to_temp("test_gps.jpg");
+
+        // Verify EXIF exists before clearing
+        let before = crate::exif::read_exif(&path).unwrap();
+        assert_eq!(before.make.as_deref(), Some("NIKON"));
+        assert!(before.has_gps);
+
+        // Clear it
+        clear_exif(&path, ImageKind::Jpeg).unwrap();
+
+        // Read back — all metadata should be gone
+        let after = crate::exif::read_exif(&path).unwrap();
+        assert!(after.make.is_none(), "make should be cleared");
+        assert!(after.model.is_none(), "model should be cleared");
+        assert!(!after.has_gps, "GPS should be cleared");
+        assert!(after.date_time.is_none(), "date_time should be cleared");
+
+        // File should still be a valid JPEG
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(&bytes[0..2], &[0xFF, 0xD8], "still a valid JPEG");
+    }
+
+    #[test]
+    fn clear_exif_jpeg_preserves_image_data() {
+        let (_dir, path) = copy_to_temp("test_canon_powershot.jpg");
+
+        let size_before = std::fs::metadata(&path).unwrap().len();
+
+        clear_exif(&path, ImageKind::Jpeg).unwrap();
+
+        // File should be smaller (metadata removed) but still valid
+        let size_after = std::fs::metadata(&path).unwrap().len();
+        assert!(size_after < size_before, "file should be smaller after clearing EXIF");
+        assert!(size_after > 0, "file should not be empty");
+
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(&bytes[0..2], &[0xFF, 0xD8], "still a valid JPEG");
+    }
+
+    #[test]
+    fn clear_exif_jpeg_mobile_removes_all() {
+        let (_dir, path) = copy_to_temp("test_mobile_exif.jpg");
+
+        let before = crate::exif::read_exif(&path).unwrap();
+        assert_eq!(before.make.as_deref(), Some("HMD Global"));
+        assert!(before.has_gps);
+
+        clear_exif(&path, ImageKind::Jpeg).unwrap();
+
+        let after = crate::exif::read_exif(&path).unwrap();
+        assert!(after.make.is_none(), "make should be cleared");
+        assert!(!after.has_gps, "GPS should be cleared");
+    }
+
+    #[test]
+    fn clear_exif_tiff_returns_error() {
+        let (_dir, path) = copy_to_temp("test.tiff");
+        let result = clear_exif(&path, ImageKind::Tiff);
+        assert!(result.is_err(), "clearing TIFF EXIF should error");
+        assert!(
+            result.unwrap_err().to_string().contains("not supported"),
+            "error should mention not supported"
+        );
+    }
+
+    #[test]
+    fn clear_exif_sidecar_removes_xmp() {
+        let (_dir, path) = copy_to_temp("test.hiec");
+
+        // First write a sidecar XMP
+        let existing = crate::exif::read_exif(&path).unwrap();
+        let ai = test_ai_result();
+        let fields = test_fields();
+        let result = write_exif(&path, &ai, &existing, &fields, false, ImageKind::Sidecar).unwrap();
+        let sidecar = result.sidecar_path.unwrap();
+        assert!(sidecar.exists(), "sidecar should exist after write");
+
+        // Now clear it
+        clear_exif(&path, ImageKind::Sidecar).unwrap();
+        assert!(!sidecar.exists(), "sidecar should be removed after clear");
+    }
+
+    #[test]
+    fn clear_exif_sidecar_no_xmp_is_ok() {
+        let (_dir, path) = copy_to_temp("test.hiec");
+
+        // No sidecar exists — should succeed without error
+        let xmp_path = path.with_extension("xmp");
+        assert!(!xmp_path.exists());
+        clear_exif(&path, ImageKind::Sidecar).unwrap();
+    }
+
+    #[test]
+    fn clear_then_write_jpeg() {
+        let (_dir, path) = copy_to_temp("test_gps.jpg");
+
+        // Clear all EXIF
+        clear_exif(&path, ImageKind::Jpeg).unwrap();
+        let cleared = crate::exif::read_exif(&path).unwrap();
+        assert!(cleared.make.is_none());
+        assert!(!cleared.has_gps);
+
+        // Write new metadata to the cleared file
+        let ai = test_ai_result();
+        let fields = test_fields();
+        let result = write_exif(&path, &ai, &cleared, &fields, false, ImageKind::Jpeg).unwrap();
+        assert!(result.title_written);
+
+        // Read back — new metadata should be present
+        let after = crate::exif::read_exif(&path).unwrap();
+        assert!(after.title.is_some(), "title should be written to cleared file");
     }
 
     #[test]
