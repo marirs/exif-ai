@@ -65,6 +65,16 @@ jobs:
         env:
           RUSTFLAGS: ${{ matrix.rustflags || '' }}
 
+      - name: Install GUI dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libgtk-3-dev
+
+      - name: Build GUI
+        if: ${{ !matrix.cross }}
+        run: cargo build --release --features gui --target ${{ matrix.target }}
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags || '' }}
+
   build-windows-arm:
     name: Build (Windows ARM64)
     runs-on: windows-latest
@@ -93,6 +103,9 @@ jobs:
 
       - name: Build CLI (cross-compile)
         run: cargo build --release --target aarch64-pc-windows-msvc
+
+      - name: Build GUI (cross-compile)
+        run: cargo build --release --features gui --target aarch64-pc-windows-msvc
 
   coverage:
     name: Coverage
