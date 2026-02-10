@@ -12,7 +12,7 @@ AI-powered EXIF metadata writer — generate SEO titles, descriptions, tags, GPS
 ## Features
 
 - **AI Vision Analysis** — Send images to AI models for intelligent metadata generation
-- **Local AI (Offline)** — Run a quantized BLIP model on-device — no API keys, no network, fully private
+- **Local AI (Offline)** — Run a BLIP model on-device — no API keys, no network, fully private
 - **Multi-Service Failover** — Configurable chain: Local BLIP → OpenAI GPT-4o-mini → Google Gemini → Cloudflare Workers AI
 - **Multi-Format Support** — JPEG, PNG, WebP, TIFF (native write), HEIC/HEIF, AVIF, and 10+ RAW formats (sidecar XMP)
 - **EXIF Writing** — Writes title, description, tags, GPS coordinates, and subject identification directly into image EXIF data

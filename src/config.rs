@@ -69,7 +69,7 @@ pub struct CloudflareConfig {
 
 /// Local BLIP model configuration.
 ///
-/// When enabled, runs a quantized BLIP image-captioning model on-device.
+/// When enabled, runs a BLIP image-captioning model on-device.
 /// No API keys or network access required after the initial model download.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalConfig {
