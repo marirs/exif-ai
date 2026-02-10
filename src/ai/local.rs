@@ -188,10 +188,11 @@ impl AiService for LocalService {
         // Build structured result from caption
         let title = build_title(&caption);
         let tags = extract_tags(&caption);
+        let description = capitalize_first(&caption);
 
         Ok(AiResult {
             title: Some(title),
-            description: Some(caption),
+            description: Some(description),
             tags: if tags.is_empty() { None } else { Some(tags) },
             gps: None,
             subject: None,
@@ -287,6 +288,19 @@ fn build_title(caption: &str) -> String {
     }
 
     title_words.join(" ")
+}
+
+/// Capitalize the first letter of a string.
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => {
+            let mut result = c.to_uppercase().to_string();
+            result.extend(chars);
+            result
+        }
+        None => String::new(),
+    }
 }
 
 /// Extract keyword tags from a caption using simple NLP heuristics.
@@ -400,4 +414,133 @@ pub async fn download_model(model_dir: Option<&Path>) -> Result<PathBuf> {
 
     log::info!("Model ready at: {}", dir.display());
     Ok(dir)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn new_uses_custom_paths() {
+        let svc = LocalService::new(
+            PathBuf::from("/custom/models/model.safetensors"),
+            PathBuf::from("/custom/models/tokenizer.json"),
+        );
+        assert_eq!(svc.model_path, PathBuf::from("/custom/models/model.safetensors"));
+        assert_eq!(svc.tokenizer_path, PathBuf::from("/custom/models/tokenizer.json"));
+    }
+
+    #[test]
+    fn model_exists_false_when_missing() {
+        let dir = TempDir::new().unwrap();
+        let svc = LocalService::new(
+            dir.path().join("model.safetensors"),
+            dir.path().join("tokenizer.json"),
+        );
+        assert!(!svc.model_exists());
+    }
+
+    #[test]
+    fn model_exists_false_when_partial() {
+        let dir = TempDir::new().unwrap();
+        // Only create the model file, not the tokenizer
+        fs::write(dir.path().join("model.safetensors"), b"fake").unwrap();
+        let svc = LocalService::new(
+            dir.path().join("model.safetensors"),
+            dir.path().join("tokenizer.json"),
+        );
+        assert!(!svc.model_exists());
+    }
+
+    #[test]
+    fn model_exists_true_when_both_present() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("model.safetensors"), b"fake model").unwrap();
+        fs::write(dir.path().join("tokenizer.json"), b"{}").unwrap();
+        let svc = LocalService::new(
+            dir.path().join("model.safetensors"),
+            dir.path().join("tokenizer.json"),
+        );
+        assert!(svc.model_exists());
+    }
+
+    #[test]
+    fn custom_model_dir_resolves_filenames() {
+        // Simulates what the pipeline does when config has a custom model_path
+        let dir = TempDir::new().unwrap();
+        let custom_dir = dir.path().join("my_models");
+        fs::create_dir_all(&custom_dir).unwrap();
+        fs::write(custom_dir.join("model.safetensors"), b"fake").unwrap();
+        fs::write(custom_dir.join("tokenizer.json"), b"{}").unwrap();
+
+        // This mirrors pipeline.rs: dir.join("model.safetensors"), dir.join("tokenizer.json")
+        let svc = LocalService::new(
+            custom_dir.join("model.safetensors"),
+            custom_dir.join("tokenizer.json"),
+        );
+        assert!(svc.model_exists());
+        assert_eq!(svc.model_path.parent().unwrap(), custom_dir.as_path());
+        assert_eq!(svc.tokenizer_path.parent().unwrap(), custom_dir.as_path());
+    }
+
+    #[test]
+    fn from_default_dir_uses_cache() {
+        let svc = LocalService::from_default_dir().unwrap();
+        // Should point to the platform cache dir + "exif-ai"
+        let expected_dir = default_model_dir().unwrap();
+        assert_eq!(svc.model_path, expected_dir.join(MODEL_FILENAME));
+        assert_eq!(svc.tokenizer_path, expected_dir.join(TOKENIZER_FILENAME));
+    }
+
+    #[test]
+    fn build_title_differs_from_caption() {
+        let caption = "trees and leaves on the ground in a park with a fence";
+        let title = build_title(caption);
+        assert_ne!(title, caption, "title should differ from raw caption");
+        // Title should be shorter
+        assert!(title.len() < caption.len(), "title should be shorter than caption");
+        // Title should be capitalized
+        assert!(title.starts_with(|c: char| c.is_uppercase()), "title should start uppercase");
+    }
+
+    #[test]
+    fn build_title_title_cases_words() {
+        let caption = "a dog sitting on the beach near the ocean";
+        let title = build_title(caption);
+        // "a", "on", "the", "near" are stripped; remaining words title-cased
+        assert!(title.contains("Dog"));
+        assert!(title.contains("Sitting"));
+        assert!(!title.contains(" a "));
+        assert!(!title.contains(" the "));
+    }
+
+    #[test]
+    fn capitalize_first_works() {
+        assert_eq!(capitalize_first("hello world"), "Hello world");
+        assert_eq!(capitalize_first(""), "");
+        assert_eq!(capitalize_first("A"), "A");
+        assert_eq!(capitalize_first("already Capital"), "Already Capital");
+    }
+
+    #[test]
+    fn extract_tags_removes_stop_words() {
+        let caption = "a cat sitting on the mat in a room";
+        let tags = extract_tags(caption);
+        assert!(tags.contains(&"cat".to_string()));
+        assert!(tags.contains(&"sitting".to_string()));
+        assert!(tags.contains(&"mat".to_string()));
+        assert!(tags.contains(&"room".to_string()));
+        assert!(!tags.contains(&"a".to_string()));
+        assert!(!tags.contains(&"the".to_string()));
+        assert!(!tags.contains(&"on".to_string()));
+    }
+
+    #[test]
+    fn extract_tags_empty_for_only_stop_words() {
+        let caption = "a the in on at";
+        let tags = extract_tags(caption);
+        assert!(tags.is_empty());
+    }
 }
