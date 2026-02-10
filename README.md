@@ -1,6 +1,13 @@
 # exif-ai
 
+[![CI](https://github.com/marirs/exif-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/marirs/exif-ai/actions/workflows/ci.yml)
+[![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Crates.io](https://img.shields.io/crates/v/exif-ai.svg)](https://crates.io/crates/exif-ai)
+
 AI-powered EXIF metadata writer — generate SEO titles, descriptions, tags, GPS, and subject data for images using AI vision models.
+
+**Platforms:** Linux (x86_64, ARM64) · macOS (Apple Silicon, Intel) · Windows (x86_64, ARM64)
 
 ## Features
 
