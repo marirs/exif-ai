@@ -292,9 +292,33 @@ Options:
       --dry-run        Preview changes without writing to files
       --json           Output results as JSON
   -v, --verbose        Verbose output
+      --show-exif      Display all EXIF metadata and exit
+      --clear-exif     Clear all EXIF/XMP/IPTC metadata from the image(s)
   -h, --help           Print help
   -V, --version        Print version
 ```
+
+### Inspect EXIF
+
+```bash
+# Show all EXIF metadata for an image
+exif-ai-cli --show-exif photo.jpg
+
+# Show EXIF for multiple files
+exif-ai-cli --show-exif photo1.jpg photo2.jpg ./photos/
+```
+
+### Clear EXIF
+
+```bash
+# Strip all EXIF/XMP/IPTC metadata from an image
+exif-ai-cli --clear-exif photo.jpg
+
+# Clear metadata from all images in a directory
+exif-ai-cli --clear-exif ./photos/
+```
+
+> **Note:** Clearing EXIF from TIFF files is not supported (EXIF is integral to the TIFF structure). For HEIC/RAW sidecar formats, `--clear-exif` removes the `.xmp` sidecar file.
 
 ## How It Works
 
