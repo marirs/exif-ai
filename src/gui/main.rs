@@ -414,7 +414,9 @@ impl App {
                     let has_result = entry.result.is_some();
                     let processing = self.processing;
 
-                    egui::ScrollArea::vertical().show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
                         // Image preview
                         ui.horizontal(|ui| {
                             if let Some(ref tex) = entry.texture {
@@ -473,58 +475,119 @@ impl App {
         if entry.texture.is_some() {
             return;
         }
-        if let Ok(bytes) = std::fs::read(&entry.path) {
-            if let Ok(img) = image::load_from_memory(&bytes) {
-                let img = img.thumbnail(400, 400);
-                let size = [img.width() as usize, img.height() as usize];
-                let rgba = img.to_rgba8();
-                let pixels = rgba.as_flat_samples();
-                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
-                entry.texture = Some(ctx.load_texture(
-                    entry.path.to_string_lossy(),
-                    color_image,
-                    egui::TextureOptions::LINEAR,
-                ));
+
+        // Try loading directly with the image crate (JPEG, PNG, WebP, TIFF)
+        let decoded = std::fs::read(&entry.path).ok().and_then(|bytes| {
+            image::load_from_memory(&bytes).ok()
+        }).or_else(|| {
+            // Fallback: use macOS `sips` to convert HEIC/RAW/AVIF to JPEG for preview
+            #[cfg(target_os = "macos")]
+            {
+                let tmp = std::env::temp_dir().join("exif_ai_preview.jpg");
+                let status = std::process::Command::new("sips")
+                    .args(["-s", "format", "jpeg", "-s", "formatOptions", "70"])
+                    .arg(&entry.path)
+                    .arg("--out")
+                    .arg(&tmp)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status();
+                if status.is_ok_and(|s| s.success()) {
+                    if let Ok(bytes) = std::fs::read(&tmp) {
+                        let _ = std::fs::remove_file(&tmp);
+                        return image::load_from_memory(&bytes).ok();
+                    }
+                }
             }
+            None
+        });
+
+        if let Some(img) = decoded {
+            let img = img.thumbnail(400, 400);
+            let size = [img.width() as usize, img.height() as usize];
+            let rgba = img.to_rgba8();
+            let pixels = rgba.as_flat_samples();
+            let color_image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+            entry.texture = Some(ctx.load_texture(
+                entry.path.to_string_lossy(),
+                color_image,
+                egui::TextureOptions::LINEAR,
+            ));
         }
     }
 
     fn show_existing_exif(ui: &mut egui::Ui, data: &ExifData) {
         egui::CollapsingHeader::new(egui::RichText::new("Existing EXIF").strong())
-            .default_open(false)
+            .default_open(true)
             .show(ui, |ui| {
-                egui::Grid::new("existing_exif_grid")
-                    .num_columns(2)
-                    .spacing([12.0, 4.0])
+                egui::ScrollArea::vertical()
+                    .max_height(220.0)
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        let fields: Vec<(&str, Option<&str>)> = vec![
-                            ("Make", data.make.as_deref()),
-                            ("Model", data.model.as_deref()),
-                            ("Lens", data.lens_model.as_deref()),
-                            ("Date", data.date_time.as_deref()),
-                            ("Exposure", data.exposure_time.as_deref()),
-                            ("F-Number", data.f_number.as_deref()),
-                            ("ISO", data.iso.as_deref()),
-                            ("Focal Length", data.focal_length.as_deref()),
-                            ("Software", data.software.as_deref()),
-                            ("Title", data.title.as_deref()),
-                            ("Description", data.description.as_deref()),
-                            ("Keywords", data.keywords.as_deref()),
-                        ];
-                        for (label, value) in fields {
-                            if let Some(val) = value {
-                                ui.label(egui::RichText::new(label).strong());
-                                ui.label(val);
-                                ui.end_row();
+                        let section = |ui: &mut egui::Ui, heading: &str, fields: &[(&str, Option<&str>)]| {
+                            let any = fields.iter().any(|(_, v)| v.is_some());
+                            if !any { return; }
+                            ui.label(egui::RichText::new(heading).small().color(egui::Color32::GRAY));
+                            ui.end_row();
+                            for &(label, ref value) in fields {
+                                if let Some(val) = value {
+                                    ui.label(egui::RichText::new(label).strong());
+                                    ui.label(*val);
+                                    ui.end_row();
+                                }
                             }
-                        }
-                        if data.has_gps {
-                            if let (Some(lat), Some(lon)) = (data.gps_latitude, data.gps_longitude) {
-                                ui.label(egui::RichText::new("GPS").strong());
-                                ui.label(format!("{lat:.6}, {lon:.6}"));
-                                ui.end_row();
-                            }
-                        }
+                        };
+
+                        egui::Grid::new("existing_exif_grid")
+                            .num_columns(2)
+                            .spacing([12.0, 4.0])
+                            .show(ui, |ui| {
+                                // Camera
+                                section(ui, "CAMERA", &[
+                                    ("Make", data.make.as_deref()),
+                                    ("Model", data.model.as_deref()),
+                                    ("Lens", data.lens_model.as_deref()),
+                                ]);
+
+                                // Exposure
+                                section(ui, "EXPOSURE", &[
+                                    ("Date", data.date_time.as_deref()),
+                                    ("Exposure", data.exposure_time.as_deref()),
+                                    ("F-Number", data.f_number.as_deref()),
+                                    ("ISO", data.iso.as_deref()),
+                                    ("Focal Length", data.focal_length.as_deref()),
+                                ]);
+
+                                // Image
+                                section(ui, "IMAGE", &[
+                                    ("Width", data.image_width.as_deref()),
+                                    ("Height", data.image_height.as_deref()),
+                                    ("Orientation", data.orientation.as_deref()),
+                                    ("Color Space", data.color_space.as_deref()),
+                                    ("X Resolution", data.x_resolution.as_deref()),
+                                    ("Y Resolution", data.y_resolution.as_deref()),
+                                    ("Software", data.software.as_deref()),
+                                ]);
+
+                                // Metadata (IPTC / XMP fields)
+                                section(ui, "METADATA", &[
+                                    ("Title", data.title.as_deref()),
+                                    ("Description", data.description.as_deref()),
+                                    ("Keywords", data.keywords.as_deref()),
+                                    ("Subject", data.subject.as_deref()),
+                                ]);
+
+                                // GPS
+                                if data.has_gps {
+                                    if let (Some(lat), Some(lon)) = (data.gps_latitude, data.gps_longitude) {
+                                        ui.label(egui::RichText::new("GPS").small().color(egui::Color32::GRAY));
+                                        ui.end_row();
+                                        ui.label(egui::RichText::new("Coordinates").strong());
+                                        ui.label(format!("{lat:.6}, {lon:.6}"));
+                                        ui.end_row();
+                                    }
+                                }
+                            });
                     });
             });
     }
