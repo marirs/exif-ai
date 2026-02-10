@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Exif AI
+Comment=AI-powered EXIF metadata writer
+Exec=exif-ai-gui
+Icon=exif-ai
+Terminal=false
+Type=Application
+Categories=Graphics;Photography;
+MimeType=image/jpeg;image/png;image/webp;image/tiff;image/heic;image/heif;image/avif;

@@ -22,6 +22,7 @@ AI-powered EXIF metadata writer — generate SEO titles, descriptions, tags, GPS
 - **Backup Originals** — Automatically backs up images before modifying EXIF data
 - **Dry Run Mode** — Preview what would be written without modifying any files
 - **JSON Output** — Machine-readable output for scripting and automation
+- **Desktop GUI** — Native desktop app (egui) with image preview, drag-and-drop, EXIF viewer, and AI results
 - **Cross-Platform** — Builds for macOS (Silicon & Intel) and Windows (ARM & Intel)
 - **Show & Clear EXIF** — Inspect or strip all EXIF/XMP/IPTC metadata from images
 
@@ -44,6 +45,49 @@ cargo build --release
 
 The binary will be at `target/release/exif-ai-cli`.
 
+### Desktop GUI (from source)
+
+```bash
+cargo build --release --features gui
+```
+
+The binary will be at `target/release/exif-ai-gui`.
+
+#### macOS `.app` Bundle
+
+To build a native macOS app bundle (double-click to launch, no terminal):
+
+```bash
+cargo install cargo-bundle   # one-time
+cargo bundle --release --features gui --bin exif-ai-gui
+```
+
+The app will be at `target/release/bundle/osx/Exif AI.app`. Copy it to `/Applications` to install.
+
+#### Windows
+
+```bash
+cargo build --release --features gui
+```
+
+The `.exe` at `target/release/exif-ai-gui.exe` has the app icon embedded and launches without a console window.
+
+#### Linux
+
+```bash
+sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libgtk-3-dev
+cargo build --release --features gui
+```
+
+To integrate with the desktop, copy the binary, icon, and `.desktop` file:
+
+```bash
+sudo cp target/release/exif-ai-gui /usr/local/bin/
+sudo cp assets/icon_256.png /usr/share/icons/hicolor/256x256/apps/exif-ai.png
+sudo cp assets/exif-ai-gui.desktop /usr/share/applications/
+sudo update-desktop-database
+```
+
 ### Cross-Compilation Targets
 
 ```bash
@@ -59,6 +103,28 @@ cargo build --release --target x86_64-pc-windows-msvc
 # Windows ARM
 cargo build --release --target aarch64-pc-windows-msvc
 ```
+
+## Desktop GUI
+
+The GUI provides a native desktop interface for processing images:
+
+- **Drag & drop** images or use Open Files / Open Folder
+- **Image preview** — thumbnails for JPEG, PNG, WebP, TIFF, HEIC, RAW (via macOS `sips` fallback)
+- **Existing EXIF viewer** — grouped by Camera, Exposure, Image, Metadata, and GPS sections
+- **AI processing** with real-time status and service failover
+- **Results display** — title, description, tags, GPS, subject with write status
+- **Dry Run mode** — preview AI results without modifying files
+- **Settings panel** — configure AI services, EXIF fields, and output options
+- **Model download** — download the local BLIP model from the GUI
+- **Batch processing** — process multiple images at once
+
+Run with:
+
+```bash
+cargo run --features gui --bin exif-ai-gui
+```
+
+Or launch the `.app` bundle from Finder on macOS.
 
 ## Quick Start (CLI)
 

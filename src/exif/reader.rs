@@ -359,7 +359,7 @@ mod tests {
 
     #[test]
     fn read_heic_iphone() {
-        let data = read_exif(&data_path("test.hiec")).unwrap();
+        let data = read_exif(&data_path("test.heic")).unwrap();
         assert_eq!(data.make.as_deref(), Some("Apple"));
         assert_eq!(data.model.as_deref(), Some("iPhone 11 Pro Max"));
         assert!(data.has_gps);

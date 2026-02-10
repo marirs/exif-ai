@@ -2102,7 +2102,7 @@ mod tests {
 
     #[test]
     fn write_heic_sidecar_round_trip() {
-        let (_dir, path) = copy_to_temp("test.hiec");
+        let (_dir, path) = copy_to_temp("test.heic");
 
         let existing = crate::exif::read_exif(&path).unwrap();
         assert_eq!(existing.make.as_deref(), Some("Apple"));
@@ -2200,7 +2200,7 @@ mod tests {
 
     #[test]
     fn clear_exif_sidecar_removes_xmp() {
-        let (_dir, path) = copy_to_temp("test.hiec");
+        let (_dir, path) = copy_to_temp("test.heic");
 
         // First write a sidecar XMP
         let existing = crate::exif::read_exif(&path).unwrap();
@@ -2217,7 +2217,7 @@ mod tests {
 
     #[test]
     fn clear_exif_sidecar_no_xmp_is_ok() {
-        let (_dir, path) = copy_to_temp("test.hiec");
+        let (_dir, path) = copy_to_temp("test.heic");
 
         // No sidecar exists — should succeed without error
         let xmp_path = path.with_extension("xmp");
@@ -2248,7 +2248,7 @@ mod tests {
 
     #[test]
     fn write_heic_sidecar_skips_existing_fields() {
-        let (_dir, path) = copy_to_temp("test.hiec");
+        let (_dir, path) = copy_to_temp("test.heic");
 
         let existing = crate::exif::read_exif(&path).unwrap();
         assert!(existing.has_gps); // iPhone has GPS

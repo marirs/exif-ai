@@ -1,6 +1,6 @@
 [package]
 name = "exif-ai"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "AI-powered EXIF metadata writer — generate SEO titles, descriptions, tags, GPS, and subject data for images"
 license = "MIT"
@@ -94,6 +94,9 @@ long_description = "Generate SEO titles, descriptions, tags, GPS coordinates, an
 copyright = "Copyright (c) Sriram Govindan"
 osx_minimum_system_version = "11.0"
 icon = ["assets/icon.icns"]
+
+[target.'cfg(target_os = "windows")'.build-dependencies]
+winresource = "0.1"
 
 [dev-dependencies]
 tempfile = "3"

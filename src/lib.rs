@@ -3,6 +3,11 @@
 //! AI-powered EXIF metadata writer — generate SEO titles, descriptions, tags, GPS coordinates,
 //! and subject data for images using AI vision models (OpenAI, Google Gemini, Cloudflare Workers AI).
 //!
+//! This crate provides:
+//! - **Library** — [`Pipeline`](pipeline::Pipeline) builder API for programmatic use
+//! - **CLI** — `exif-ai-cli` binary for command-line batch processing
+//! - **Desktop GUI** — `exif-ai-gui` binary (egui) with image preview, drag-and-drop, and settings panel
+//!
 //! ## Quick Start
 //!
 //! The simplest way to use the library is through the [`Pipeline`](pipeline::Pipeline) builder,
