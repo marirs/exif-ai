@@ -10,16 +10,33 @@ use exif_ai::config::Config;
 use exif_ai::exif::{self, ExifData};
 use exif_ai::pipeline::{collect_images, ImageKind, Pipeline, ProcessResult};
 
+fn load_icon() -> Option<egui::IconData> {
+    let png_bytes = include_bytes!("../../assets/icon_256.png");
+    let img = image::load_from_memory(png_bytes).ok()?.into_rgba8();
+    let (w, h) = img.dimensions();
+    Some(egui::IconData {
+        rgba: img.into_raw(),
+        width: w,
+        height: h,
+    })
+}
+
 fn main() -> eframe::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format_timestamp(None)
         .init();
 
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size([1100.0, 720.0])
+        .with_min_inner_size([800.0, 500.0])
+        .with_drag_and_drop(true);
+
+    if let Some(icon) = load_icon() {
+        viewport = viewport.with_icon(std::sync::Arc::new(icon));
+    }
+
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1100.0, 720.0])
-            .with_min_inner_size([800.0, 500.0])
-            .with_drag_and_drop(true),
+        viewport,
         ..Default::default()
     };
 

@@ -85,7 +85,7 @@ accelerate-src = "0.3"
 candle-core = { version = "0.8", features = ["accelerate", "metal"] }
 
 # ── macOS .app bundle configuration ──────────────────────────────────
-[package.metadata.bundle]
+[package.metadata.bundle.bin.exif-ai-gui]
 name = "Exif AI"
 identifier = "com.marirs.exif-ai"
 category = "public.app-category.photography"
@@ -93,6 +93,7 @@ short_description = "AI-powered EXIF metadata writer"
 long_description = "Generate SEO titles, descriptions, tags, GPS coordinates, and subject data for images using AI vision models."
 copyright = "Copyright (c) Sriram Govindan"
 osx_minimum_system_version = "11.0"
+icon = ["assets/icon.icns"]
 
 [dev-dependencies]
 tempfile = "3"
