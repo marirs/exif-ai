@@ -6,6 +6,9 @@ description = "AI-powered EXIF metadata writer — generate SEO titles, descript
 license = "MIT"
 repository = "https://github.com/marirs/exif-ai"
 authors = ["Sriram Govindan"]
+exclude = [".github", "docs", "tests", "examples", "target", "Cargo.lock", "data"]
+keywords = ["exif", "metadata", "ai", "gps", "image"]
+categories = ["multimedia::images", "command-line-utilities"]
 
 [lib]
 name = "exif_ai"
