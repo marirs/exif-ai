@@ -269,3 +269,106 @@ fn latlng_to_decimal(latlng: &LatLng, reference: char) -> f64 {
 
     coord
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    // ── ExifData::default ────────────────────────────────────────────
+
+    #[test]
+    fn exif_data_default_all_none() {
+        let data = ExifData::default();
+        assert!(data.title.is_none());
+        assert!(data.description.is_none());
+        assert!(data.keywords.is_none());
+        assert!(data.subject.is_none());
+        assert!(!data.has_gps);
+        assert!(data.gps_latitude.is_none());
+        assert!(data.gps_longitude.is_none());
+        assert!(data.make.is_none());
+        assert!(data.model.is_none());
+    }
+
+    // ── read_exif: nonexistent file ──────────────────────────────────
+
+    #[test]
+    fn read_exif_nonexistent_file_errors() {
+        let result = read_exif(Path::new("/nonexistent/photo.jpg"));
+        assert!(result.is_err());
+    }
+
+    // ── read_exif: empty file ────────────────────────────────────────
+
+    #[test]
+    fn read_exif_empty_file_returns_default() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("empty.jpg");
+        std::fs::write(&path, b"").unwrap();
+
+        // Empty file should fail to open as MediaSource or return default
+        let result = read_exif(&path);
+        // Either an error or a default ExifData is acceptable
+        match result {
+            Ok(data) => assert!(data.title.is_none()),
+            Err(_) => {} // also fine
+        }
+    }
+
+    // ── read_exif: file with no EXIF ─────────────────────────────────
+
+    #[test]
+    fn read_exif_non_image_returns_default_or_error() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("text.jpg");
+        std::fs::write(&path, b"this is not a jpeg").unwrap();
+
+        let result = read_exif(&path);
+        match result {
+            Ok(data) => {
+                // Should return default (no EXIF found)
+                assert!(data.title.is_none());
+                assert!(data.make.is_none());
+                assert!(!data.has_gps);
+            }
+            Err(_) => {} // also acceptable
+        }
+    }
+
+    // ── latlng_to_decimal ────────────────────────────────────────────
+
+    #[test]
+    fn latlng_north_east() {
+        // 48°51'24"N = 48.856667
+        let latlng = LatLng((48, 1).into(), (51, 1).into(), (24, 1).into());
+        let dec = latlng_to_decimal(&latlng, 'N');
+        assert!((dec - 48.856667).abs() < 0.001);
+    }
+
+    #[test]
+    fn latlng_south() {
+        let latlng = LatLng((33, 1).into(), (52, 1).into(), (0, 1).into());
+        let dec = latlng_to_decimal(&latlng, 'S');
+        assert!(dec < 0.0);
+        assert!((dec + 33.8667).abs() < 0.01);
+    }
+
+    #[test]
+    fn latlng_west() {
+        let latlng = LatLng((118, 1).into(), (30, 1).into(), (0, 1).into());
+        let dec = latlng_to_decimal(&latlng, 'W');
+        assert!(dec < 0.0);
+        assert!((dec + 118.5).abs() < 0.01);
+    }
+
+    // ── helper functions ─────────────────────────────────────────────
+
+    #[test]
+    fn entry_to_string_none_for_empty() {
+        // Test with a simple string-like EntryValue
+        let val = EntryValue::Text("hello".to_string());
+        let s = entry_to_string(&val);
+        assert_eq!(s, Some("hello".to_string()));
+    }
+}

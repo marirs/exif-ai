@@ -213,3 +213,158 @@ impl Config {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    // ── Config::default ──────────────────────────────────────────────
+
+    #[test]
+    fn default_config_has_sane_values() {
+        let config = Config::default();
+        assert!(config.ai_services.openai.enabled);
+        assert!(!config.ai_services.gemini.enabled);
+        assert!(!config.ai_services.cloudflare.enabled);
+        assert!(config.ai_services.openai.api_key.is_empty());
+        assert_eq!(config.ai_services.openai.model, "gpt-4o-mini");
+        assert_eq!(config.service_order, vec!["openai", "gemini", "cloudflare"]);
+    }
+
+    #[test]
+    fn default_exif_fields() {
+        let config = Config::default();
+        assert!(config.exif_fields.write_title);
+        assert!(config.exif_fields.write_description);
+        assert!(config.exif_fields.write_tags);
+        assert!(config.exif_fields.write_gps);
+        assert!(config.exif_fields.write_subject);
+        assert!(!config.exif_fields.overwrite_existing);
+    }
+
+    #[test]
+    fn default_output_config() {
+        let config = Config::default();
+        assert!(!config.output.dry_run);
+        assert!(config.output.backup_originals);
+        assert!(config.output.log_file.is_none());
+    }
+
+    // ── Config::save / Config::load round-trip ───────────────────────
+
+    #[test]
+    fn save_and_load_round_trip() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test_config.json");
+
+        let mut config = Config::default();
+        config.ai_services.openai.api_key = "sk-test-key".to_string();
+        config.ai_services.gemini.enabled = true;
+        config.exif_fields.overwrite_existing = true;
+        config.output.dry_run = true;
+
+        config.save(Some(&path)).unwrap();
+        assert!(path.exists());
+
+        let loaded = Config::load(Some(&path)).unwrap();
+        assert_eq!(loaded.ai_services.openai.api_key, "sk-test-key");
+        assert!(loaded.ai_services.gemini.enabled);
+        assert!(loaded.exif_fields.overwrite_existing);
+        assert!(loaded.output.dry_run);
+    }
+
+    #[test]
+    fn load_nonexistent_returns_default() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("does_not_exist.json");
+
+        let config = Config::load(Some(&path)).unwrap();
+        // Should return defaults when file doesn't exist
+        assert!(config.ai_services.openai.enabled);
+        assert!(config.ai_services.openai.api_key.is_empty());
+    }
+
+    #[test]
+    fn load_invalid_json_fails() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("bad.json");
+        std::fs::write(&path, "not valid json {{{").unwrap();
+
+        let result = Config::load(Some(&path));
+        assert!(result.is_err());
+    }
+
+    // ── Config::enabled_services ─────────────────────────────────────
+
+    #[test]
+    fn enabled_services_default() {
+        let config = Config::default();
+        let enabled = config.enabled_services();
+        // Only openai is enabled by default
+        assert_eq!(enabled, vec!["openai"]);
+    }
+
+    #[test]
+    fn enabled_services_all() {
+        let mut config = Config::default();
+        config.ai_services.gemini.enabled = true;
+        config.ai_services.cloudflare.enabled = true;
+
+        let enabled = config.enabled_services();
+        assert_eq!(enabled, vec!["openai", "gemini", "cloudflare"]);
+    }
+
+    #[test]
+    fn enabled_services_none() {
+        let mut config = Config::default();
+        config.ai_services.openai.enabled = false;
+
+        let enabled = config.enabled_services();
+        assert!(enabled.is_empty());
+    }
+
+    // ── Serialization ────────────────────────────────────────────────
+
+    #[test]
+    fn config_serializes_to_json() {
+        let config = Config::default();
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("openai"));
+        assert!(json.contains("service_order"));
+        assert!(json.contains("exif_fields"));
+    }
+
+    #[test]
+    fn config_deserializes_from_json() {
+        let json = r#"{
+            "ai_services": {
+                "openai": {"api_key": "key1", "model": "gpt-4o", "enabled": true},
+                "gemini": {"api_key": "", "model": "gemini-2.0-flash", "enabled": false},
+                "cloudflare": {"account_id": "", "api_token": "", "model": "test", "enabled": false}
+            },
+            "service_order": ["openai"],
+            "exif_fields": {
+                "write_title": true,
+                "write_description": false,
+                "write_tags": true,
+                "write_gps": false,
+                "write_subject": false,
+                "overwrite_existing": true
+            },
+            "output": {
+                "dry_run": true,
+                "backup_originals": false,
+                "log_file": null
+            }
+        }"#;
+
+        let config: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(config.ai_services.openai.api_key, "key1");
+        assert_eq!(config.ai_services.openai.model, "gpt-4o");
+        assert!(!config.exif_fields.write_description);
+        assert!(config.exif_fields.overwrite_existing);
+        assert!(config.output.dry_run);
+        assert!(!config.output.backup_originals);
+    }
+}

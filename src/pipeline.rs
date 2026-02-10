@@ -432,3 +432,220 @@ pub async fn process_image(
 
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    // ── ImageKind::from_path ──────────────────────────────────────────
+
+    #[test]
+    fn image_kind_jpeg() {
+        assert_eq!(ImageKind::from_path(Path::new("photo.jpg")), Some(ImageKind::Jpeg));
+        assert_eq!(ImageKind::from_path(Path::new("photo.jpeg")), Some(ImageKind::Jpeg));
+        assert_eq!(ImageKind::from_path(Path::new("PHOTO.JPG")), Some(ImageKind::Jpeg));
+    }
+
+    #[test]
+    fn image_kind_png() {
+        assert_eq!(ImageKind::from_path(Path::new("image.png")), Some(ImageKind::Png));
+        assert_eq!(ImageKind::from_path(Path::new("IMAGE.PNG")), Some(ImageKind::Png));
+    }
+
+    #[test]
+    fn image_kind_webp() {
+        assert_eq!(ImageKind::from_path(Path::new("image.webp")), Some(ImageKind::WebP));
+    }
+
+    #[test]
+    fn image_kind_tiff() {
+        assert_eq!(ImageKind::from_path(Path::new("scan.tif")), Some(ImageKind::Tiff));
+        assert_eq!(ImageKind::from_path(Path::new("scan.tiff")), Some(ImageKind::Tiff));
+    }
+
+    #[test]
+    fn image_kind_sidecar_heic() {
+        assert_eq!(ImageKind::from_path(Path::new("photo.heic")), Some(ImageKind::Sidecar));
+        assert_eq!(ImageKind::from_path(Path::new("photo.heif")), Some(ImageKind::Sidecar));
+        assert_eq!(ImageKind::from_path(Path::new("photo.HEIC")), Some(ImageKind::Sidecar));
+    }
+
+    #[test]
+    fn image_kind_sidecar_avif() {
+        assert_eq!(ImageKind::from_path(Path::new("photo.avif")), Some(ImageKind::Sidecar));
+    }
+
+    #[test]
+    fn image_kind_sidecar_raw() {
+        for ext in &["cr3", "cr2", "dng", "nef", "arw", "raf", "orf", "rw2", "pef", "srw"] {
+            let path = format!("photo.{ext}");
+            assert_eq!(
+                ImageKind::from_path(Path::new(&path)),
+                Some(ImageKind::Sidecar),
+                "Expected Sidecar for .{ext}"
+            );
+        }
+    }
+
+    #[test]
+    fn image_kind_unsupported() {
+        assert_eq!(ImageKind::from_path(Path::new("doc.pdf")), None);
+        assert_eq!(ImageKind::from_path(Path::new("video.mp4")), None);
+        assert_eq!(ImageKind::from_path(Path::new("noext")), None);
+    }
+
+    // ── ImageKind::mime_type ──────────────────────────────────────────
+
+    #[test]
+    fn mime_type_jpeg() {
+        let kind = ImageKind::Jpeg;
+        assert_eq!(kind.mime_type(Path::new("a.jpg")), "image/jpeg");
+        assert_eq!(kind.mime_type(Path::new("a.jpeg")), "image/jpeg");
+    }
+
+    #[test]
+    fn mime_type_png() {
+        assert_eq!(ImageKind::Png.mime_type(Path::new("a.png")), "image/png");
+    }
+
+    #[test]
+    fn mime_type_webp() {
+        assert_eq!(ImageKind::WebP.mime_type(Path::new("a.webp")), "image/webp");
+    }
+
+    #[test]
+    fn mime_type_heic() {
+        assert_eq!(ImageKind::Sidecar.mime_type(Path::new("a.heic")), "image/heic");
+        assert_eq!(ImageKind::Sidecar.mime_type(Path::new("a.heif")), "image/heif");
+    }
+
+    #[test]
+    fn mime_type_raw_formats() {
+        assert_eq!(ImageKind::Sidecar.mime_type(Path::new("a.cr3")), "image/x-canon-cr3");
+        assert_eq!(ImageKind::Sidecar.mime_type(Path::new("a.nef")), "image/x-nikon-nef");
+        assert_eq!(ImageKind::Sidecar.mime_type(Path::new("a.arw")), "image/x-sony-arw");
+        assert_eq!(ImageKind::Sidecar.mime_type(Path::new("a.dng")), "image/x-adobe-dng");
+    }
+
+    #[test]
+    fn mime_type_fallback() {
+        assert_eq!(ImageKind::Jpeg.mime_type(Path::new("noext")), "image/jpeg");
+    }
+
+    // ── is_supported_image ───────────────────────────────────────────
+
+    #[test]
+    fn supported_image_extensions() {
+        assert!(is_supported_image(Path::new("photo.jpg")));
+        assert!(is_supported_image(Path::new("photo.JPEG")));
+        assert!(is_supported_image(Path::new("photo.png")));
+        assert!(is_supported_image(Path::new("photo.webp")));
+        assert!(is_supported_image(Path::new("photo.tif")));
+        assert!(is_supported_image(Path::new("photo.heic")));
+        assert!(is_supported_image(Path::new("photo.cr3")));
+        assert!(is_supported_image(Path::new("photo.dng")));
+    }
+
+    #[test]
+    fn unsupported_image_extensions() {
+        assert!(!is_supported_image(Path::new("doc.pdf")));
+        assert!(!is_supported_image(Path::new("video.mp4")));
+        assert!(!is_supported_image(Path::new("readme.txt")));
+        assert!(!is_supported_image(Path::new("noext")));
+    }
+
+    // ── collect_images ───────────────────────────────────────────────
+
+    #[test]
+    fn collect_images_single_file() {
+        let dir = TempDir::new().unwrap();
+        let jpg = dir.path().join("test.jpg");
+        fs::write(&jpg, b"fake").unwrap();
+
+        let images = collect_images(&[jpg.clone()]);
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0], jpg);
+    }
+
+    #[test]
+    fn collect_images_skips_unsupported() {
+        let dir = TempDir::new().unwrap();
+        let txt = dir.path().join("readme.txt");
+        fs::write(&txt, b"hello").unwrap();
+
+        let images = collect_images(&[txt]);
+        assert!(images.is_empty());
+    }
+
+    #[test]
+    fn collect_images_directory_recursive() {
+        let dir = TempDir::new().unwrap();
+        let sub = dir.path().join("sub");
+        fs::create_dir(&sub).unwrap();
+
+        fs::write(dir.path().join("a.jpg"), b"fake").unwrap();
+        fs::write(sub.join("b.png"), b"fake").unwrap();
+        fs::write(sub.join("c.txt"), b"fake").unwrap();
+
+        let images = collect_images(&[dir.path().to_path_buf()]);
+        assert_eq!(images.len(), 2);
+    }
+
+    #[test]
+    fn collect_images_empty_dir() {
+        let dir = TempDir::new().unwrap();
+        let images = collect_images(&[dir.path().to_path_buf()]);
+        assert!(images.is_empty());
+    }
+
+    #[test]
+    fn collect_images_nonexistent_path() {
+        let images = collect_images(&[PathBuf::from("/nonexistent/path")]);
+        assert!(images.is_empty());
+    }
+
+    #[test]
+    fn collect_images_mixed_files_and_dirs() {
+        let dir = TempDir::new().unwrap();
+        let jpg = dir.path().join("photo.jpg");
+        let sub = dir.path().join("folder");
+        fs::create_dir(&sub).unwrap();
+        fs::write(&jpg, b"fake").unwrap();
+        fs::write(sub.join("deep.heic"), b"fake").unwrap();
+
+        let images = collect_images(&[jpg.clone(), sub]);
+        assert_eq!(images.len(), 2);
+    }
+
+    // ── build_service_chain ──────────────────────────────────────────
+
+    #[test]
+    fn build_service_chain_none_enabled() {
+        let mut config = Config::default();
+        config.ai_services.openai.enabled = false;
+        config.ai_services.gemini.enabled = false;
+        config.ai_services.cloudflare.enabled = false;
+
+        let services = build_service_chain(&config);
+        assert!(services.is_empty());
+    }
+
+    #[test]
+    fn build_service_chain_skips_empty_keys() {
+        let config = Config::default(); // openai enabled but key is empty
+        let services = build_service_chain(&config);
+        assert!(services.is_empty());
+    }
+
+    #[test]
+    fn build_service_chain_with_key() {
+        let mut config = Config::default();
+        config.ai_services.openai.api_key = "sk-test".to_string();
+
+        let services = build_service_chain(&config);
+        assert_eq!(services.len(), 1);
+        assert_eq!(services[0].name(), "OpenAI");
+    }
+}

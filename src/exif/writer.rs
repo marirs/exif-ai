@@ -1266,7 +1266,7 @@ fn inject_ai_tags_into_tiff(
     Ok(result)
 }
 
-/// Collect GPS tags into the tag list.
+/// Collect GPS tags into the tag list. 
 fn collect_gps_tags(tags: &mut Vec<ExifTag>, gps: &GpsCoords) {
     let lat = gps.latitude;
     let lon = gps.longitude;
@@ -1325,5 +1325,277 @@ fn collect_gps_tags(tags: &mut Vec<ExifTag>, gps: &GpsCoords) {
         &ExifTagGroup::GPSIFD,
     ) {
         tags.push(tag);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai::AiResult;
+    use crate::config::ExifFields;
+    use crate::pipeline::ImageKind;
+    use tempfile::TempDir;
+
+    fn test_fields() -> ExifFields {
+        ExifFields {
+            write_title: true,
+            write_description: true,
+            write_tags: true,
+            write_gps: true,
+            write_subject: true,
+            overwrite_existing: false,
+        }
+    }
+
+    fn test_ai_result() -> AiResult {
+        AiResult {
+            title: Some("Test Title".into()),
+            description: Some("A test description".into()),
+            tags: Some(vec!["tag1".into(), "tag2".into(), "tag3".into()]),
+            gps: None,
+            subject: Some(vec!["Test Subject".into()]),
+        }
+    }
+
+    // ── WriteResult::default ─────────────────────────────────────────
+
+    #[test]
+    fn write_result_default() {
+        let r = WriteResult::default();
+        assert!(!r.title_written);
+        assert!(!r.description_written);
+        assert!(!r.tags_written);
+        assert!(!r.gps_written);
+        assert!(!r.subject_written);
+        assert!(r.skipped_fields.is_empty());
+        assert!(r.sidecar_path.is_none());
+    }
+
+    // ── write_exif: dry_run ──────────────────────────────────────────
+
+    #[test]
+    fn dry_run_does_not_modify_file() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test.jpg");
+        let content = b"fake jpeg content";
+        std::fs::write(&path, content).unwrap();
+
+        let existing = ExifData::default();
+        let ai = test_ai_result();
+        let fields = test_fields();
+
+        let result = write_exif(&path, &ai, &existing, &fields, true, ImageKind::Jpeg).unwrap();
+
+        // Dry run should report what would be written
+        assert!(result.title_written);
+        assert!(result.description_written);
+        assert!(result.tags_written);
+        assert!(result.subject_written);
+
+        // File should be unchanged
+        let after = std::fs::read(&path).unwrap();
+        assert_eq!(after, content);
+    }
+
+    // ── write_exif: field skipping ───────────────────────────────────
+
+    #[test]
+    fn skips_existing_title() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test.jpg");
+        std::fs::write(&path, b"fake").unwrap();
+
+        let mut existing = ExifData::default();
+        existing.title = Some("Existing Title".into());
+
+        let ai = test_ai_result();
+        let fields = test_fields(); // overwrite_existing = false
+
+        let result = write_exif(&path, &ai, &existing, &fields, true, ImageKind::Jpeg).unwrap();
+        assert!(!result.title_written);
+        assert!(result.skipped_fields.iter().any(|s| s.contains("title")));
+    }
+
+    #[test]
+    fn skips_existing_description() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test.jpg");
+        std::fs::write(&path, b"fake").unwrap();
+
+        let mut existing = ExifData::default();
+        existing.description = Some("Existing Desc".into());
+
+        let ai = test_ai_result();
+        let fields = test_fields();
+
+        let result = write_exif(&path, &ai, &existing, &fields, true, ImageKind::Jpeg).unwrap();
+        assert!(!result.description_written);
+        assert!(result.skipped_fields.iter().any(|s| s.contains("description")));
+    }
+
+    #[test]
+    fn skips_existing_keywords() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test.jpg");
+        std::fs::write(&path, b"fake").unwrap();
+
+        let mut existing = ExifData::default();
+        existing.keywords = Some("existing; keywords".into());
+
+        let ai = test_ai_result();
+        let fields = test_fields();
+
+        let result = write_exif(&path, &ai, &existing, &fields, true, ImageKind::Jpeg).unwrap();
+        assert!(!result.tags_written);
+        assert!(result.skipped_fields.iter().any(|s| s.contains("tags")));
+    }
+
+    #[test]
+    fn skips_gps_when_existing() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test.jpg");
+        std::fs::write(&path, b"fake").unwrap();
+
+        let mut existing = ExifData::default();
+        existing.has_gps = true;
+
+        let mut ai = test_ai_result();
+        ai.gps = Some(crate::ai::GpsCoords { latitude: 48.8, longitude: 2.3 });
+
+        let fields = test_fields();
+
+        let result = write_exif(&path, &ai, &existing, &fields, true, ImageKind::Jpeg).unwrap();
+        assert!(!result.gps_written);
+        assert!(result.skipped_fields.iter().any(|s| s.contains("gps")));
+    }
+
+    // ── write_exif: overwrite_existing ───────────────────────────────
+
+    #[test]
+    fn overwrite_existing_writes_all() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test.jpg");
+        std::fs::write(&path, b"fake").unwrap();
+
+        let mut existing = ExifData::default();
+        existing.title = Some("Old Title".into());
+        existing.description = Some("Old Desc".into());
+        existing.keywords = Some("old".into());
+
+        let ai = test_ai_result();
+        let mut fields = test_fields();
+        fields.overwrite_existing = true;
+
+        let result = write_exif(&path, &ai, &existing, &fields, true, ImageKind::Jpeg).unwrap();
+        assert!(result.title_written);
+        assert!(result.description_written);
+        assert!(result.tags_written);
+        assert!(result.skipped_fields.is_empty());
+    }
+
+    // ── write_exif: disabled fields ──────────────────────────────────
+
+    #[test]
+    fn disabled_fields_not_written() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("test.jpg");
+        std::fs::write(&path, b"fake").unwrap();
+
+        let existing = ExifData::default();
+        let ai = test_ai_result();
+        let fields = ExifFields {
+            write_title: false,
+            write_description: false,
+            write_tags: false,
+            write_gps: false,
+            write_subject: false,
+            overwrite_existing: false,
+        };
+
+        let result = write_exif(&path, &ai, &existing, &fields, true, ImageKind::Jpeg).unwrap();
+        assert!(!result.title_written);
+        assert!(!result.description_written);
+        assert!(!result.tags_written);
+        assert!(!result.gps_written);
+        assert!(!result.subject_written);
+    }
+
+    // ── write_exif: sidecar XMP ──────────────────────────────────────
+
+    #[test]
+    fn sidecar_creates_xmp_file() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("photo.heic");
+        std::fs::write(&path, b"fake heic").unwrap();
+
+        let existing = ExifData::default();
+        let ai = test_ai_result();
+        let fields = test_fields();
+
+        let result = write_exif(&path, &ai, &existing, &fields, false, ImageKind::Sidecar).unwrap();
+
+        assert!(result.sidecar_path.is_some());
+        let sidecar = result.sidecar_path.unwrap();
+        assert_eq!(sidecar.extension().unwrap(), "xmp");
+        assert!(sidecar.exists());
+
+        // Verify XMP content
+        let content = std::fs::read_to_string(&sidecar).unwrap();
+        assert!(content.contains("Test Title"));
+        assert!(content.contains("A test description"));
+        assert!(content.contains("tag1"));
+    }
+
+    #[test]
+    fn sidecar_dry_run_no_file() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("photo.cr3");
+        std::fs::write(&path, b"fake raw").unwrap();
+
+        let existing = ExifData::default();
+        let ai = test_ai_result();
+        let fields = test_fields();
+
+        let result = write_exif(&path, &ai, &existing, &fields, true, ImageKind::Sidecar).unwrap();
+
+        // Dry run should not create sidecar
+        assert!(result.sidecar_path.is_none());
+        let xmp_path = path.with_extension("xmp");
+        assert!(!xmp_path.exists());
+    }
+
+    // ── encode_utf16le ───────────────────────────────────────────────
+
+    #[test]
+    fn encode_utf16le_ascii() {
+        let bytes = encode_utf16le("ABC");
+        // A=0x41, B=0x42, C=0x43 in UTF-16LE + null terminator
+        assert_eq!(bytes, vec![0x41, 0x00, 0x42, 0x00, 0x43, 0x00, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn encode_utf16le_empty() {
+        let bytes = encode_utf16le("");
+        // Just null terminator
+        assert_eq!(bytes, vec![0x00, 0x00]);
+    }
+
+    // ── collect_gps_tags ─────────────────────────────────────────────
+
+    #[test]
+    fn collect_gps_tags_positive_coords() {
+        let mut tags = Vec::new();
+        let gps = GpsCoords { latitude: 48.8566, longitude: 2.3522 };
+        collect_gps_tags(&mut tags, &gps);
+        // Should produce 4 tags: lat_ref, lat, lon_ref, lon
+        assert_eq!(tags.len(), 4);
+    }
+
+    #[test]
+    fn collect_gps_tags_negative_coords() {
+        let mut tags = Vec::new();
+        let gps = GpsCoords { latitude: -33.8688, longitude: -118.2426 };
+        collect_gps_tags(&mut tags, &gps);
+        assert_eq!(tags.len(), 4);
     }
 }
