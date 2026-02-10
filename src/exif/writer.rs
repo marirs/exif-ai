@@ -325,21 +325,32 @@ fn write_tags_to_jpeg(
     let original_exif = jpeg.exif().unwrap_or_default();
 
     // Build the new EXIF TIFF data
-    let new_tiff_data: Option<Vec<u8>>;
+    let mut new_tiff_data: Option<Vec<u8>> = None;
+
+    // Determine if GPS is involved — little_exif drops GPS IFD during its
+    // encode (it only encodes IFD0 + ExifIFD), so we must use the raw TIFF
+    // injection path whenever GPS data needs to be preserved or written.
+    let gps_involved = existing.has_gps
+        || (fields.write_gps && ai_result.gps.is_some());
 
     // Try the little_exif round-trip first (works when it can parse the EXIF)
-    if let Some(mut metadata) = load_existing_metadata(path) {
-        log::debug!("little_exif parsed existing EXIF, using merge strategy");
-        for tag in new_tags {
-            metadata.set_tag(tag.clone());
+    // BUT skip it when GPS is involved to avoid losing GPS IFD.
+    if !gps_involved {
+        if let Some(mut metadata) = load_existing_metadata(path) {
+            log::debug!("little_exif parsed existing EXIF, using merge strategy");
+            for tag in new_tags {
+                metadata.set_tag(tag.clone());
+            }
+            let exif_bytes = metadata.as_u8_vec(FileExtension::JPEG);
+            if exif_bytes.len() > JPEG_EXIF_OVERHEAD {
+                new_tiff_data = Some(exif_bytes[JPEG_EXIF_OVERHEAD..].to_vec());
+            } else {
+                new_tiff_data = None;
+            }
         }
-        let exif_bytes = metadata.as_u8_vec(FileExtension::JPEG);
-        if exif_bytes.len() > JPEG_EXIF_OVERHEAD {
-            new_tiff_data = Some(exif_bytes[JPEG_EXIF_OVERHEAD..].to_vec());
-        } else {
-            new_tiff_data = None;
-        }
-    } else {
+    }
+
+    if new_tiff_data.is_none() {
         log::info!("Using raw TIFF injection to preserve original EXIF");
         if original_exif.is_empty() {
             // No existing EXIF — build fresh
@@ -1050,7 +1061,17 @@ fn inject_ai_tags_into_tiff(
         }
     }
 
-    if ifd0_entries.is_empty() && exif_ifd_entries.is_empty() {
+    // Build GPS IFD entries for new GPS coordinates
+    let mut gps_ifd_entries: Vec<RawIfdEntry> = Vec::new();
+    if fields.write_gps {
+        if let Some(ref gps) = ai_result.gps {
+            if !existing.has_gps {
+                gps_ifd_entries.extend(make_raw_gps_entries(gps));
+            }
+        }
+    }
+
+    if ifd0_entries.is_empty() && exif_ifd_entries.is_empty() && gps_ifd_entries.is_empty() {
         return Ok(original.to_vec());
     }
 
@@ -1100,6 +1121,33 @@ fn inject_ai_tags_into_tiff(
             let eo = ifd0_start + i * 12;
             read_u32(original, eo + 8) as usize
         });
+
+    // Find existing GPS IFD offset from IFD0 (tag 0x8825)
+    let gps_ifd_offset: Option<usize> = ifd0_tag_ids.iter().enumerate()
+        .find(|&(_, t)| *t == 0x8825)
+        .map(|(i, _)| {
+            let eo = ifd0_start + i * 12;
+            read_u32(original, eo + 8) as usize
+        });
+
+    // Parse existing GPS IFD if present
+    let (gps_count, gps_start, _gps_end, gps_next) = if let Some(go) = gps_ifd_offset {
+        if go + 2 <= original.len() {
+            let count = read_u16(original, go) as usize;
+            let start = go + 2;
+            let end = start + count * 12;
+            if end + 4 <= original.len() {
+                let next = read_u32(original, end);
+                (count, start, end, next)
+            } else {
+                (0, 0, 0, 0u32)
+            }
+        } else {
+            (0, 0, 0, 0u32)
+        }
+    } else {
+        (0, 0, 0, 0u32)
+    };
 
     // Parse ExifIFD if it exists
     let (exif_count, exif_start, _exif_end, exif_tag_ids, exif_next) = if let Some(eo) = exif_ifd_offset {
@@ -1188,9 +1236,69 @@ fn inject_ai_tags_into_tiff(
         None
     };
 
+    // === Rebuild GPS IFD at the end ===
+    let new_gps_ifd_start: Option<u32> = if !gps_ifd_entries.is_empty() || gps_ifd_offset.is_some() {
+        let start = result.len() as u32;
+        let total = gps_count + gps_ifd_entries.len();
+
+        if total > 0 {
+            // Entry count
+            result.extend_from_slice(&encode_u16(total as u16));
+
+            // Copy original GPS IFD entries
+            for i in 0..gps_count {
+                let eo = gps_start + i * 12;
+                result.extend_from_slice(&original[eo..eo + 12]);
+            }
+
+            // New GPS entries
+            let gps_append_start = result.len();
+            for _ in 0..gps_ifd_entries.len() {
+                result.extend_from_slice(&[0u8; 12]);
+            }
+
+            // Next-IFD pointer
+            result.extend_from_slice(&encode_u32(gps_next));
+
+            // Append data blobs and build entries
+            let mut data_off = result.len() as u32;
+            let mut raw_gps: Vec<[u8; 12]> = Vec::new();
+            for entry in &gps_ifd_entries {
+                let mut ib = [0u8; 12];
+                ib[0..2].copy_from_slice(&encode_u16(entry.tag_id));
+                ib[2..4].copy_from_slice(&encode_u16(entry.data_format));
+                ib[4..8].copy_from_slice(&encode_u32(entry.count));
+                if let Some(ref extra) = entry.extra_data {
+                    ib[8..12].copy_from_slice(&encode_u32(data_off));
+                    result.extend_from_slice(extra);
+                    data_off += extra.len() as u32;
+                } else {
+                    ib[8..12].copy_from_slice(&entry.inline_value);
+                }
+                raw_gps.push(ib);
+            }
+
+            // Fill new GPS entry slots
+            for (i, ib) in raw_gps.iter().enumerate() {
+                let off = gps_append_start + i * 12;
+                result[off..off + 12].copy_from_slice(ib);
+            }
+
+            Some(start)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // If we're writing new GPS and IFD0 doesn't have a GPS pointer yet, we need to add one
+    let need_gps_pointer = new_gps_ifd_start.is_some() && !ifd0_tag_ids.contains(&0x8825);
+
     // === Rebuild IFD0 at the end ===
     let ifd0_append_count = ifd0_entries.iter()
-        .filter(|e| !ifd0_tag_ids.contains(&e.tag_id)).count();
+        .filter(|e| !ifd0_tag_ids.contains(&e.tag_id)).count()
+        + if need_gps_pointer { 1 } else { 0 };
     let ifd0_total = ifd0_count + ifd0_append_count;
 
     let new_ifd0_start = result.len() as u32;
@@ -1245,9 +1353,20 @@ fn inject_ai_tags_into_tiff(
         }
     }
 
+    // If we need a new GPS pointer entry in IFD0, write it into the last appended slot
+    if need_gps_pointer {
+        let off = ifd0_append_start + slot * 12;
+        let mut ib = [0u8; 12];
+        ib[0..2].copy_from_slice(&encode_u16(0x8825)); // GPSInfo tag
+        ib[2..4].copy_from_slice(&encode_u16(4));      // LONG format
+        ib[4..8].copy_from_slice(&encode_u32(1));      // 1 component
+        // Offset will be filled in below when we update GPS IFD pointer
+        ib[8..12].copy_from_slice(&encode_u32(0));
+        result[off..off + 12].copy_from_slice(&ib);
+    }
+
     // If we rebuilt ExifIFD, update the ExifIFD pointer in the new IFD0
     if let Some(new_exif_off) = new_exif_ifd_start {
-        // Find the ExifIFD pointer entry (0x8769) in the new IFD0 and update it
         for i in 0..ifd0_total {
             let eo = ifd0_entries_base + i * 12;
             if eo + 12 <= result.len() {
@@ -1260,10 +1379,112 @@ fn inject_ai_tags_into_tiff(
         }
     }
 
+    // Update GPS IFD pointer in the new IFD0
+    if let Some(new_gps_off) = new_gps_ifd_start {
+        if need_gps_pointer {
+            // We appended a new GPS pointer entry — it's the last appended slot
+            // Find it by scanning for tag 0x8825
+            for i in 0..ifd0_total {
+                let eo = ifd0_entries_base + i * 12;
+                if eo + 12 <= result.len() {
+                    let tag = read_u16(&result, eo);
+                    if tag == 0x8825 {
+                        result[eo + 8..eo + 12].copy_from_slice(&encode_u32(new_gps_off));
+                        break;
+                    }
+                }
+            }
+        } else {
+            // Existing GPS pointer — update it
+            for i in 0..ifd0_total {
+                let eo = ifd0_entries_base + i * 12;
+                if eo + 12 <= result.len() {
+                    let tag = read_u16(&result, eo);
+                    if tag == 0x8825 {
+                        result[eo + 8..eo + 12].copy_from_slice(&encode_u32(new_gps_off));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     // Update TIFF header to point to new IFD0
     result[4..8].copy_from_slice(&encode_u32(new_ifd0_start));
 
     Ok(result)
+}
+
+/// Build raw IFD entries for GPS coordinates (for inject_ai_tags_into_tiff).
+fn make_raw_gps_entries(gps: &GpsCoords) -> Vec<RawIfdEntry> {
+    let mut entries = Vec::new();
+
+    let lat = gps.latitude;
+    let lon = gps.longitude;
+
+    let lat_ref = if lat >= 0.0 { "N" } else { "S" };
+    let lon_ref = if lon >= 0.0 { "E" } else { "W" };
+
+    let lat_abs = lat.abs();
+    let lon_abs = lon.abs();
+
+    let lat_deg = lat_abs.floor() as u32;
+    let lat_min = ((lat_abs - lat_deg as f64) * 60.0).floor() as u32;
+    let lat_sec = ((lat_abs - lat_deg as f64 - lat_min as f64 / 60.0) * 3600.0 * 10000.0) as u32;
+
+    let lon_deg = lon_abs.floor() as u32;
+    let lon_min = ((lon_abs - lon_deg as f64) * 60.0).floor() as u32;
+    let lon_sec = ((lon_abs - lon_deg as f64 - lon_min as f64 / 60.0) * 3600.0 * 10000.0) as u32;
+
+    // GPSLatitudeRef (tag 0x0001, ASCII, 2 bytes: "N\0" or "S\0")
+    let lat_ref_data = format!("{lat_ref}\0");
+    entries.push(RawIfdEntry {
+        tag_id: TAG_GPS_LATITUDE_REF,
+        data_format: 2, // ASCII
+        count: 2,
+        inline_value: {
+            let mut v = [0u8; 4];
+            let b = lat_ref_data.as_bytes();
+            v[..b.len().min(4)].copy_from_slice(&b[..b.len().min(4)]);
+            v
+        },
+        extra_data: None,
+    });
+
+    // GPSLatitude (tag 0x0002, RATIONAL, 3 rationals = 24 bytes)
+    entries.push(RawIfdEntry {
+        tag_id: TAG_GPS_LATITUDE,
+        data_format: 5, // RATIONAL (unsigned)
+        count: 3,
+        inline_value: [0u8; 4],
+        extra_data: Some(encode_gps_rational(lat_deg, lat_min, lat_sec, 10000)),
+    });
+
+    // GPSLongitudeRef (tag 0x0003, ASCII, 2 bytes)
+    let lon_ref_data = format!("{lon_ref}\0");
+    entries.push(RawIfdEntry {
+        tag_id: TAG_GPS_LONGITUDE_REF,
+        data_format: 2, // ASCII
+        count: 2,
+        inline_value: {
+            let mut v = [0u8; 4];
+            let b = lon_ref_data.as_bytes();
+            v[..b.len().min(4)].copy_from_slice(&b[..b.len().min(4)]);
+            v
+        },
+        extra_data: None,
+    });
+
+    // GPSLongitude (tag 0x0004, RATIONAL, 3 rationals = 24 bytes)
+    entries.push(RawIfdEntry {
+        tag_id: TAG_GPS_LONGITUDE,
+        data_format: 5, // RATIONAL (unsigned)
+        count: 3,
+        inline_value: [0u8; 4],
+        extra_data: Some(encode_gps_rational(lon_deg, lon_min, lon_sec, 10000)),
+    });
+
+    entries
 }
 
 /// Collect GPS tags into the tag list. 
@@ -1597,5 +1818,236 @@ mod tests {
         let gps = GpsCoords { latitude: -33.8688, longitude: -118.2426 };
         collect_gps_tags(&mut tags, &gps);
         assert_eq!(tags.len(), 4);
+    }
+
+    // ── Write round-trip tests (real files from data/) ───────────────
+
+    fn data_path(name: &str) -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data").join(name)
+    }
+
+    fn copy_to_temp(name: &str) -> (TempDir, std::path::PathBuf) {
+        let dir = TempDir::new().unwrap();
+        let src = data_path(name);
+        let dst = dir.path().join(name);
+        std::fs::copy(&src, &dst).unwrap();
+        (dir, dst)
+    }
+
+    #[test]
+    fn write_jpeg_round_trip_canon() {
+        let (_dir, path) = copy_to_temp("test_canon_powershot.jpg");
+
+        let existing = crate::exif::read_exif(&path).unwrap();
+        assert!(existing.title.is_none()); // no title yet
+        // Canon file has a non-empty description ("Undefined[0x00...]"), so writer skips it
+        assert!(existing.description.is_some());
+
+        let ai = test_ai_result();
+        let fields = test_fields();
+
+        let result = write_exif(&path, &ai, &existing, &fields, false, ImageKind::Jpeg).unwrap();
+        assert!(result.title_written);
+        assert!(!result.description_written); // skipped — existing description present
+        assert!(result.tags_written);
+        assert!(result.subject_written);
+        assert!(!result.gps_written); // no GPS in ai_result
+
+        // Read back and verify AI metadata was written
+        let after = crate::exif::read_exif(&path).unwrap();
+        // Original camera data should be preserved
+        assert_eq!(after.make.as_deref(), Some("Canon"));
+        assert_eq!(after.model.as_deref(), Some("Canon PowerShot S40"));
+        // AI-written title should be present
+        assert!(after.title.is_some(), "title should be written");
+    }
+
+    #[test]
+    fn write_jpeg_round_trip_mobile() {
+        let (_dir, path) = copy_to_temp("test_mobile_exif.jpg");
+
+        let existing = crate::exif::read_exif(&path).unwrap();
+        assert!(existing.has_gps); // already has GPS
+
+        let mut ai = test_ai_result();
+        ai.gps = Some(GpsCoords { latitude: 0.0, longitude: 0.0 });
+
+        let fields = test_fields();
+
+        let result = write_exif(&path, &ai, &existing, &fields, false, ImageKind::Jpeg).unwrap();
+        assert!(result.title_written);
+        assert!(!result.gps_written); // should skip — existing GPS
+
+        // Read back: original GPS must be preserved
+        let after = crate::exif::read_exif(&path).unwrap();
+        assert_eq!(after.make.as_deref(), Some("HMD Global"));
+        assert!(after.title.is_some(), "title should be written");
+        assert!(after.has_gps, "existing GPS must be preserved");
+        let lat = after.gps_latitude.unwrap();
+        let lon = after.gps_longitude.unwrap();
+        assert!((lat - 60.991).abs() < 0.01, "GPS lat should be preserved, got lat={lat}");
+        assert!((lon - 24.424).abs() < 0.01, "GPS lon should be preserved, got lon={lon}");
+    }
+
+    #[test]
+    fn write_jpeg_with_gps() {
+        let (_dir, path) = copy_to_temp("test_exif.jpg");
+
+        let existing = crate::exif::read_exif(&path).unwrap();
+        assert!(!existing.has_gps); // Jolla has no GPS
+
+        let mut ai = test_ai_result();
+        ai.gps = Some(GpsCoords { latitude: 48.8566, longitude: 2.3522 });
+
+        let fields = test_fields();
+
+        let result = write_exif(&path, &ai, &existing, &fields, false, ImageKind::Jpeg).unwrap();
+        assert!(result.title_written);
+        assert!(result.gps_written);
+
+        // Read back: GPS must now be present and correct
+        let after = crate::exif::read_exif(&path).unwrap();
+        assert_eq!(after.make.as_deref(), Some("Jolla")); // preserved
+        assert!(after.title.is_some(), "title should be written");
+        assert!(after.has_gps, "GPS should be written");
+        let lat = after.gps_latitude.unwrap();
+        let lon = after.gps_longitude.unwrap();
+        assert!((lat - 48.8566).abs() < 0.01, "lat={lat}");
+        assert!((lon - 2.3522).abs() < 0.01, "lon={lon}");
+    }
+
+    #[test]
+    fn write_jpeg_preserves_gps_nikon() {
+        let (_dir, path) = copy_to_temp("test_gps.jpg");
+
+        let existing = crate::exif::read_exif(&path).unwrap();
+        assert!(existing.has_gps);
+        assert_eq!(existing.make.as_deref(), Some("NIKON"));
+
+        let ai = test_ai_result(); // no GPS in AI result
+        let fields = test_fields();
+
+        let result = write_exif(&path, &ai, &existing, &fields, false, ImageKind::Jpeg).unwrap();
+        assert!(result.title_written);
+        assert!(!result.gps_written); // skipped — existing GPS
+
+        // Read back: Nikon GPS must be preserved
+        let after = crate::exif::read_exif(&path).unwrap();
+        assert_eq!(after.make.as_deref(), Some("NIKON"));
+        assert_eq!(after.model.as_deref(), Some("COOLPIX P6000"));
+        assert!(after.has_gps, "Nikon GPS must be preserved");
+        let lat = after.gps_latitude.unwrap();
+        let lon = after.gps_longitude.unwrap();
+        assert!((lat - 43.467).abs() < 0.01, "Nikon GPS lat preserved, got lat={lat}");
+        assert!((lon - 11.885).abs() < 0.01, "Nikon GPS lon preserved, got lon={lon}");
+        assert!(after.title.is_some(), "title should be written");
+    }
+
+    #[test]
+    fn write_jpeg_preserves_existing_no_overwrite() {
+        let (_dir, path) = copy_to_temp("test_canon_powershot.jpg");
+
+        // First write
+        let existing = crate::exif::read_exif(&path).unwrap();
+        let ai = test_ai_result();
+        let fields = test_fields();
+        write_exif(&path, &ai, &existing, &fields, false, ImageKind::Jpeg).unwrap();
+
+        // Second write with different AI data — should skip because overwrite=false
+        let existing2 = crate::exif::read_exif(&path).unwrap();
+        assert!(existing2.title.is_some()); // first write succeeded
+
+        let ai2 = AiResult {
+            title: Some("OVERWRITTEN TITLE".into()),
+            description: Some("OVERWRITTEN DESC".into()),
+            tags: Some(vec!["overwritten".into()]),
+            gps: None,
+            subject: Some(vec!["overwritten".into()]),
+        };
+
+        let result2 = write_exif(&path, &ai2, &existing2, &fields, false, ImageKind::Jpeg).unwrap();
+        assert!(!result2.title_written);
+        assert!(!result2.description_written);
+
+        // Verify original AI data is still there, not overwritten
+        let after = crate::exif::read_exif(&path).unwrap();
+        assert_eq!(after.make.as_deref(), Some("Canon")); // camera preserved
+    }
+
+    #[test]
+    fn write_tiff_unsupported_variant_errors() {
+        // This TIFF variant is not supported by little_exif for writing
+        let (_dir, path) = copy_to_temp("test.tiff");
+
+        let existing = crate::exif::read_exif(&path).unwrap();
+        let ai = test_ai_result();
+        let fields = test_fields();
+
+        let result = write_exif(&path, &ai, &existing, &fields, false, ImageKind::Tiff);
+        assert!(result.is_err(), "little_exif should fail on this TIFF variant");
+
+        // Original file should be unchanged (write failed before modifying)
+        let after = crate::exif::read_exif(&path).unwrap();
+        assert_eq!(after.image_width.as_deref(), Some("635"));
+        assert_eq!(after.image_height.as_deref(), Some("348"));
+    }
+
+    #[test]
+    fn write_tiff_dry_run() {
+        let (_dir, path) = copy_to_temp("test.tiff");
+
+        let existing = crate::exif::read_exif(&path).unwrap();
+        let ai = test_ai_result();
+        let fields = test_fields();
+
+        // Dry run should succeed even for unsupported TIFF
+        let result = write_exif(&path, &ai, &existing, &fields, true, ImageKind::Tiff).unwrap();
+        assert!(result.title_written); // dry run reports what would be written
+    }
+
+    #[test]
+    fn write_heic_sidecar_round_trip() {
+        let (_dir, path) = copy_to_temp("test.hiec");
+
+        let existing = crate::exif::read_exif(&path).unwrap();
+        assert_eq!(existing.make.as_deref(), Some("Apple"));
+
+        let ai = test_ai_result();
+        let fields = test_fields();
+
+        let result = write_exif(&path, &ai, &existing, &fields, false, ImageKind::Sidecar).unwrap();
+        assert!(result.sidecar_path.is_some());
+
+        let sidecar = result.sidecar_path.unwrap();
+        assert!(sidecar.exists());
+        assert_eq!(sidecar.extension().unwrap(), "xmp");
+
+        let xmp_content = std::fs::read_to_string(&sidecar).unwrap();
+        assert!(xmp_content.contains("Test Title"));
+        assert!(xmp_content.contains("A test description"));
+        assert!(xmp_content.contains("tag1"));
+        assert!(xmp_content.contains("tag2"));
+
+        // Original HEIC file should be untouched
+        let after = crate::exif::read_exif(&path).unwrap();
+        assert_eq!(after.make.as_deref(), Some("Apple"));
+        assert!(after.has_gps); // original GPS preserved
+    }
+
+    #[test]
+    fn write_heic_sidecar_skips_existing_fields() {
+        let (_dir, path) = copy_to_temp("test.hiec");
+
+        let existing = crate::exif::read_exif(&path).unwrap();
+        assert!(existing.has_gps); // iPhone has GPS
+
+        let mut ai = test_ai_result();
+        ai.gps = Some(GpsCoords { latitude: 0.0, longitude: 0.0 });
+
+        let fields = test_fields();
+
+        let result = write_exif(&path, &ai, &existing, &fields, false, ImageKind::Sidecar).unwrap();
+        assert!(!result.gps_written); // GPS already exists
+        assert!(result.skipped_fields.iter().any(|s| s.contains("gps")));
     }
 }

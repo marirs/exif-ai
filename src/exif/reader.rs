@@ -275,6 +275,90 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    // ── read_exif: real test files (data/) ─────────────────────────────
+
+    fn data_path(name: &str) -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data").join(name)
+    }
+
+    #[test]
+    fn read_canon_powershot() {
+        let data = read_exif(&data_path("test_canon_powershot.jpg")).unwrap();
+        assert_eq!(data.make.as_deref(), Some("Canon"));
+        assert_eq!(data.model.as_deref(), Some("Canon PowerShot S40"));
+        assert_eq!(data.date_time.as_deref(), Some("2003-12-14 12:01:44"));
+        assert_eq!(data.exposure_time.as_deref(), Some("1/500"));
+        assert_eq!(data.f_number.as_deref(), Some("f/4.9"));
+        assert_eq!(data.image_width.as_deref(), Some("2272"));
+        assert_eq!(data.image_height.as_deref(), Some("1704"));
+        assert!(!data.has_gps);
+        assert!(data.title.is_none());
+        assert!(data.keywords.is_none());
+    }
+
+    #[test]
+    fn read_jolla_phone() {
+        let data = read_exif(&data_path("test_exif.jpg")).unwrap();
+        assert_eq!(data.make.as_deref(), Some("Jolla"));
+        assert_eq!(data.model.as_deref(), Some("Jolla"));
+        assert_eq!(data.f_number.as_deref(), Some("f/2.4"));
+        assert_eq!(data.iso.as_deref(), Some("320"));
+        assert_eq!(data.focal_length.as_deref(), Some("4 mm"));
+        assert!(!data.has_gps);
+    }
+
+    #[test]
+    fn read_gps_nikon() {
+        let data = read_exif(&data_path("test_gps.jpg")).unwrap();
+        assert_eq!(data.make.as_deref(), Some("NIKON"));
+        assert_eq!(data.model.as_deref(), Some("COOLPIX P6000"));
+        assert!(data.has_gps);
+        let lat = data.gps_latitude.unwrap();
+        let lon = data.gps_longitude.unwrap();
+        assert!((lat - 43.467).abs() < 0.01, "lat={lat}");
+        assert!((lon - 11.885).abs() < 0.01, "lon={lon}");
+        assert_eq!(data.iso.as_deref(), Some("64"));
+        assert_eq!(data.color_space.as_deref(), Some("sRGB"));
+    }
+
+    #[test]
+    fn read_nokia_mobile() {
+        let data = read_exif(&data_path("test_mobile_exif.jpg")).unwrap();
+        assert_eq!(data.make.as_deref(), Some("HMD Global"));
+        assert_eq!(data.model.as_deref(), Some("Nokia 8.3 5G"));
+        assert!(data.has_gps);
+        let lat = data.gps_latitude.unwrap();
+        let lon = data.gps_longitude.unwrap();
+        assert!((lat - 60.991).abs() < 0.01, "lat={lat}");
+        assert!((lon - 24.424).abs() < 0.01, "lon={lon}");
+        assert_eq!(data.f_number.as_deref(), Some("f/1.89"));
+    }
+
+    #[test]
+    fn read_tiff() {
+        let data = read_exif(&data_path("test.tiff")).unwrap();
+        assert_eq!(data.image_width.as_deref(), Some("635"));
+        assert_eq!(data.image_height.as_deref(), Some("348"));
+        assert_eq!(data.orientation.as_deref(), Some("1"));
+        assert!(!data.has_gps);
+        assert!(data.make.is_none());
+    }
+
+    #[test]
+    fn read_heic_iphone() {
+        let data = read_exif(&data_path("test.hiec")).unwrap();
+        assert_eq!(data.make.as_deref(), Some("Apple"));
+        assert_eq!(data.model.as_deref(), Some("iPhone 11 Pro Max"));
+        assert!(data.has_gps);
+        let lat = data.gps_latitude.unwrap();
+        let lon = data.gps_longitude.unwrap();
+        assert!((lat - 39.051).abs() < 0.01, "lat={lat}");
+        assert!((lon - (-94.289)).abs() < 0.01, "lon={lon}");
+        assert_eq!(data.iso.as_deref(), Some("32"));
+        assert_eq!(data.f_number.as_deref(), Some("f/1.8"));
+        assert_eq!(data.lens_model.as_deref(), Some("iPhone 11 Pro Max back triple camera 4.25mm f/1.8"));
+    }
+
     // ── ExifData::default ────────────────────────────────────────────
 
     #[test]
