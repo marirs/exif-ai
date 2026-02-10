@@ -6,6 +6,12 @@ Cargo.lock
 .DS_Store
 Thumbs.db
 
+# assuming mode folder to be models
+models/
+# models
+tokenizer.json
+model.safetensors
+
 # Config contains API keys
 config.json
 
