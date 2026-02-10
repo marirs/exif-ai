@@ -28,7 +28,7 @@ impl AiService for CloudflareService {
         "Cloudflare"
     }
 
-    async fn analyze(&self, image_base64: &str, prompt: &str) -> Result<AiResult> {
+    async fn analyze(&self, image_base64: &str, prompt: &str, _mime_type: &str) -> Result<AiResult> {
         let url = format!(
             "https://api.cloudflare.com/client/v4/accounts/{}/ai/run/{}",
             self.account_id, self.model

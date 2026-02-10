@@ -26,7 +26,7 @@ impl AiService for GeminiService {
         "Gemini"
     }
 
-    async fn analyze(&self, image_base64: &str, prompt: &str) -> Result<AiResult> {
+    async fn analyze(&self, image_base64: &str, prompt: &str, mime_type: &str) -> Result<AiResult> {
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
             self.model, self.api_key
@@ -39,7 +39,7 @@ impl AiService for GeminiService {
                         { "text": prompt },
                         {
                             "inline_data": {
-                                "mime_type": "image/jpeg",
+                                "mime_type": mime_type,
                                 "data": image_base64
                             }
                         }

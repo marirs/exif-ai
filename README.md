@@ -6,6 +6,7 @@ AI-powered EXIF metadata writer — generate SEO titles, descriptions, tags, GPS
 
 - **AI Vision Analysis** — Send images to AI models for intelligent metadata generation
 - **Multi-Service Failover** — Configurable chain: OpenAI GPT-4o-mini → Google Gemini → Cloudflare Workers AI
+- **Multi-Format Support** — JPEG, PNG, WebP, TIFF (native write), HEIC/HEIF, AVIF, and 10+ RAW formats (sidecar XMP)
 - **EXIF Writing** — Writes title, description, tags, GPS coordinates, and subject identification directly into image EXIF data
 - **GPS Intelligence** — Only writes GPS coordinates when the image has no existing GPS data AND the AI identifies a known location
 - **Subject Detection** — Identifies known people, bird species, animal species, and landmarks
@@ -194,8 +195,25 @@ Options:
 
 ## Supported Image Formats
 
-- JPEG (`.jpg`, `.jpeg`)
-- TIFF (`.tif`, `.tiff`)
+| Format | Extensions | Read EXIF | Write Metadata | Strategy |
+|--------|-----------|-----------|---------------|----------|
+| **JPEG** | `.jpg`, `.jpeg` | ✅ | EXIF + XMP + IPTC | Native (in-place) |
+| **PNG** | `.png` | ✅ | XMP (iTXt chunk) | Native (in-place) |
+| **WebP** | `.webp` | ✅ | EXIF + XMP (RIFF) | Native (in-place) |
+| **TIFF** | `.tif`, `.tiff` | ✅ | EXIF | Native (in-place) |
+| **HEIC/HEIF** | `.heic`, `.heif` | ✅ | XMP sidecar (`.xmp`) | Sidecar file |
+| **AVIF** | `.avif` | ✅ | XMP sidecar (`.xmp`) | Sidecar file |
+| **Canon RAW** | `.cr2`, `.cr3` | ✅ | XMP sidecar (`.xmp`) | Sidecar file |
+| **Adobe DNG** | `.dng` | ✅ | XMP sidecar (`.xmp`) | Sidecar file |
+| **Nikon RAW** | `.nef` | ✅ | XMP sidecar (`.xmp`) | Sidecar file |
+| **Sony RAW** | `.arw` | ✅ | XMP sidecar (`.xmp`) | Sidecar file |
+| **Fujifilm RAW** | `.raf` | ✅ | XMP sidecar (`.xmp`) | Sidecar file |
+| **Olympus RAW** | `.orf` | ✅ | XMP sidecar (`.xmp`) | Sidecar file |
+| **Panasonic RAW** | `.rw2` | ✅ | XMP sidecar (`.xmp`) | Sidecar file |
+| **Pentax RAW** | `.pef` | ✅ | XMP sidecar (`.xmp`) | Sidecar file |
+| **Samsung RAW** | `.srw` | ✅ | XMP sidecar (`.xmp`) | Sidecar file |
+
+> **Sidecar files:** For HEIC, AVIF, and RAW formats, a `.xmp` sidecar file is written alongside the original. This is the industry-standard approach used by Lightroom, darktable, and digiKam — the original file is never modified.
 
 ## Requirements
 

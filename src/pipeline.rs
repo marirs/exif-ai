@@ -8,7 +8,80 @@ use crate::exif::{self, ExifData};
 use crate::exif::write_exif;
 
 /// Supported image extensions.
-const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "tif", "tiff"];
+const IMAGE_EXTENSIONS: &[&str] = &[
+    // Native write support (EXIF+XMP+IPTC)
+    "jpg", "jpeg",
+    // Native write support (XMP)
+    "png", "webp",
+    // Native write support (EXIF)
+    "tif", "tiff",
+    // HEIC/HEIF — read EXIF, sidecar XMP write
+    "heic", "heif",
+    // AVIF — read EXIF, sidecar XMP write
+    "avif",
+    // RAW formats — read EXIF, sidecar XMP write
+    "cr3", "cr2", "dng", "nef", "arw", "raf", "orf", "rw2", "pef", "srw",
+];
+
+/// Determine the write strategy for a given image file.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ImageKind {
+    /// JPEG — full EXIF+XMP+IPTC write support
+    Jpeg,
+    /// PNG — XMP in iTXt chunk
+    Png,
+    /// WebP — EXIF+XMP in RIFF chunks
+    WebP,
+    /// TIFF — EXIF write via little_exif
+    Tiff,
+    /// HEIC/HEIF/AVIF/RAW — read EXIF from original, write sidecar .xmp
+    Sidecar,
+}
+
+impl ImageKind {
+    /// Determine the image kind from a file path extension.
+    pub fn from_path(path: &Path) -> Option<Self> {
+        let ext = path.extension()?.to_str()?.to_lowercase();
+        match ext.as_str() {
+            "jpg" | "jpeg" => Some(Self::Jpeg),
+            "png" => Some(Self::Png),
+            "webp" => Some(Self::WebP),
+            "tif" | "tiff" => Some(Self::Tiff),
+            "heic" | "heif" | "avif"
+            | "cr3" | "cr2" | "dng" | "nef" | "arw" | "raf" | "orf" | "rw2" | "pef" | "srw"
+                => Some(Self::Sidecar),
+            _ => None,
+        }
+    }
+
+    /// Get the MIME type for sending to AI services.
+    pub fn mime_type(&self, path: &Path) -> &'static str {
+        let ext = path.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .unwrap_or_default();
+        match ext.as_str() {
+            "jpg" | "jpeg" => "image/jpeg",
+            "png" => "image/png",
+            "webp" => "image/webp",
+            "tif" | "tiff" => "image/tiff",
+            "heic" => "image/heic",
+            "heif" => "image/heif",
+            "avif" => "image/avif",
+            "cr2" => "image/x-canon-cr2",
+            "cr3" => "image/x-canon-cr3",
+            "dng" => "image/x-adobe-dng",
+            "nef" => "image/x-nikon-nef",
+            "arw" => "image/x-sony-arw",
+            "raf" => "image/x-fuji-raf",
+            "orf" => "image/x-olympus-orf",
+            "rw2" => "image/x-panasonic-rw2",
+            "pef" => "image/x-pentax-pef",
+            "srw" => "image/x-samsung-srw",
+            _ => "image/jpeg",
+        }
+    }
+}
 
 /// Result of processing a single image.
 #[derive(Debug)]
@@ -24,6 +97,10 @@ pub struct ProcessResult {
     pub skipped_fields: Vec<String>,
     pub error: Option<String>,
     pub ai_service_used: Option<String>,
+    /// If a sidecar XMP file was written (for HEIC/RAW), this is the path.
+    pub sidecar_path: Option<PathBuf>,
+    /// The image kind detected for this file.
+    pub image_kind: Option<ImageKind>,
 }
 
 /// Collect image files from the given paths (files or directories).
@@ -131,6 +208,8 @@ pub async fn process_image(
     services: &[Box<dyn AiService>],
     config: &Config,
 ) -> ProcessResult {
+    let kind = ImageKind::from_path(path);
+
     let mut result = ProcessResult {
         path: path.to_path_buf(),
         ai_result: None,
@@ -143,6 +222,8 @@ pub async fn process_image(
         skipped_fields: Vec::new(),
         error: None,
         ai_service_used: None,
+        sidecar_path: None,
+        image_kind: kind,
     };
 
     // Read existing EXIF
@@ -163,6 +244,11 @@ pub async fn process_image(
     };
     let image_base64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_bytes);
 
+    // Determine MIME type for AI service
+    let mime_type = kind
+        .map(|k| k.mime_type(path))
+        .unwrap_or("image/jpeg");
+
     // Build prompt
     let prompt = ai::build_prompt();
 
@@ -170,7 +256,7 @@ pub async fn process_image(
     let mut errors = Vec::new();
     for service in services {
         log::info!("  Trying {}...", service.name());
-        match service.analyze(&image_base64, &prompt).await {
+        match service.analyze(&image_base64, &prompt, mime_type).await {
             Ok(ai_data) => {
                 if ai_data.title.is_some() || ai_data.description.is_some() {
                     result.ai_result = Some(ai_data);
@@ -203,14 +289,17 @@ pub async fn process_image(
         }
     }
 
-    // Write EXIF
+    // Write metadata based on image kind
     let ai_data = result.ai_result.as_ref().unwrap();
+    let image_kind = kind.unwrap_or(ImageKind::Jpeg);
+
     match write_exif(
         path,
         ai_data,
         &result.existing_exif,
         &config.exif_fields,
         config.output.dry_run,
+        image_kind,
     ) {
         Ok(write_result) => {
             result.title_written = write_result.title_written;
@@ -219,9 +308,10 @@ pub async fn process_image(
             result.gps_written = write_result.gps_written;
             result.subject_written = write_result.subject_written;
             result.skipped_fields = write_result.skipped_fields;
+            result.sidecar_path = write_result.sidecar_path;
         }
         Err(e) => {
-            result.error = Some(format!("Failed to write EXIF: {e}"));
+            result.error = Some(format!("Failed to write metadata: {e}"));
         }
     }
 

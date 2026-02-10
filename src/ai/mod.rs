@@ -29,7 +29,7 @@ pub struct GpsCoords {
 #[async_trait::async_trait]
 pub trait AiService: Send + Sync {
     fn name(&self) -> &str;
-    async fn analyze(&self, image_base64: &str, prompt: &str) -> Result<AiResult>;
+    async fn analyze(&self, image_base64: &str, prompt: &str, mime_type: &str) -> Result<AiResult>;
 }
 
 /// Build the AI prompt that asks for structured JSON output.

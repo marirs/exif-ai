@@ -26,7 +26,7 @@ impl AiService for OpenAiService {
         "OpenAI"
     }
 
-    async fn analyze(&self, image_base64: &str, prompt: &str) -> Result<AiResult> {
+    async fn analyze(&self, image_base64: &str, prompt: &str, mime_type: &str) -> Result<AiResult> {
         let body = json!({
             "model": self.model,
             "messages": [
@@ -44,7 +44,7 @@ impl AiService for OpenAiService {
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": format!("data:image/jpeg;base64,{image_base64}"),
+                                "url": format!("data:{mime_type};base64,{image_base64}"),
                                 "detail": "low"
                             }
                         }

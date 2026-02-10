@@ -145,6 +145,10 @@ async fn main() -> Result<()> {
                     log::info!("  Wrote: {}", written.join(", "));
                 }
 
+                if let Some(ref sidecar) = result.sidecar_path {
+                    log::info!("  Sidecar XMP: {}", sidecar.display());
+                }
+
                 if !result.skipped_fields.is_empty() {
                     log::info!("  Skipped: {}", result.skipped_fields.join(", "));
                 }
@@ -169,6 +173,7 @@ async fn main() -> Result<()> {
                     "gps_written": r.gps_written,
                     "subject_written": r.subject_written,
                     "skipped_fields": r.skipped_fields,
+                    "sidecar_path": r.sidecar_path.as_ref().map(|p| p.display().to_string()),
                     "error": r.error,
                 })
             })

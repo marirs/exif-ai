@@ -7,10 +7,11 @@ use little_exif::exif_tag::{ExifTag, ExifTagGroup};
 use little_exif::exif_tag_format::ExifTagFormat;
 use little_exif::filetype::FileExtension;
 use little_exif::metadata::Metadata;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::ai::{AiResult, GpsCoords};
 use crate::config::ExifFields;
+use crate::pipeline::ImageKind;
 use super::reader::ExifData;
 
 // EXIF tag IDs for tags not natively supported by little_exif
@@ -36,6 +37,8 @@ pub struct WriteResult {
     pub gps_written: bool,
     pub subject_written: bool,
     pub skipped_fields: Vec<String>,
+    /// Path to sidecar XMP file if one was written (for HEIC/RAW formats).
+    pub sidecar_path: Option<PathBuf>,
 }
 
 /// Encode a string as UTF-16LE bytes (used for XP* tags).
@@ -122,6 +125,7 @@ pub fn write_exif(
     existing: &ExifData,
     fields: &ExifFields,
     dry_run: bool,
+    image_kind: ImageKind,
 ) -> Result<WriteResult> {
     let mut result = WriteResult::default();
 
@@ -207,10 +211,37 @@ pub fn write_exif(
         }
     }
 
-    // Write to file using img-parts to preserve existing JPEG structure
-    if !dry_run && !new_tags.is_empty() {
-        write_tags_to_jpeg(path, &new_tags, ai_result, existing, fields)
-            .context("Failed to write EXIF metadata to file")?;
+    if dry_run {
+        return Ok(result);
+    }
+
+    // Route to the correct writer based on image format
+    match image_kind {
+        ImageKind::Jpeg => {
+            if !new_tags.is_empty() {
+                write_tags_to_jpeg(path, &new_tags, ai_result, existing, fields)
+                    .context("Failed to write EXIF metadata to JPEG")?;
+            }
+        }
+        ImageKind::Png => {
+            write_xmp_to_png(path, ai_result, existing, fields)
+                .context("Failed to write XMP metadata to PNG")?;
+        }
+        ImageKind::WebP => {
+            write_metadata_to_webp(path, ai_result, existing, fields)
+                .context("Failed to write metadata to WebP")?;
+        }
+        ImageKind::Tiff => {
+            if !new_tags.is_empty() {
+                write_tags_to_tiff(path, &new_tags)
+                    .context("Failed to write EXIF metadata to TIFF")?;
+            }
+        }
+        ImageKind::Sidecar => {
+            let sidecar = write_sidecar_xmp(path, ai_result, existing, fields)
+                .context("Failed to write sidecar XMP")?;
+            result.sidecar_path = Some(sidecar);
+        }
     }
 
     Ok(result)
@@ -297,6 +328,139 @@ fn write_tags_to_jpeg(
     std::fs::write(path, &output).context("Failed to write JPEG file")?;
 
     Ok(())
+}
+
+/// Write XMP metadata into a PNG file using img-parts iTXt chunk.
+fn write_xmp_to_png(
+    path: &Path,
+    ai_result: &AiResult,
+    existing: &ExifData,
+    fields: &ExifFields,
+) -> Result<()> {
+    use img_parts::png::{Png, PngChunk};
+
+    let file_bytes = std::fs::read(path).context("Failed to read PNG file")?;
+    let mut png = Png::from_bytes(Bytes::from(file_bytes))
+        .map_err(|e| anyhow::anyhow!("Failed to parse PNG: {e}"))?;
+
+    let xmp_xml = build_xmp(None,
+        ai_result.title.as_deref().filter(|_| fields.write_title && (existing.title.is_none() || fields.overwrite_existing)),
+        ai_result.description.as_deref().filter(|_| fields.write_description && (existing.description.is_none() || fields.overwrite_existing)),
+        if fields.write_tags && (existing.keywords.is_none() || fields.overwrite_existing) { ai_result.tags.as_ref() } else { None },
+    );
+
+    // Build iTXt chunk for XMP: keyword "XML:com.adobe.xmp" + null + compression flag + method + lang + translated keyword + text
+    let keyword = b"XML:com.adobe.xmp";
+    let mut chunk_data = Vec::new();
+    chunk_data.extend_from_slice(keyword);
+    chunk_data.push(0); // null separator
+    chunk_data.push(0); // compression flag (0 = uncompressed)
+    chunk_data.push(0); // compression method
+    chunk_data.push(0); // language tag (empty, null terminated)
+    chunk_data.push(0); // translated keyword (empty, null terminated)
+    chunk_data.extend_from_slice(xmp_xml.as_bytes());
+
+    // Remove existing XMP iTXt chunk if present
+    let chunks = png.chunks_mut();
+    chunks.retain(|c| {
+        if c.kind() == *b"iTXt" {
+            !c.contents().starts_with(b"XML:com.adobe.xmp")
+        } else {
+            true
+        }
+    });
+
+    // Insert before IDAT
+    let insert_pos = chunks.iter().position(|c| c.kind() == *b"IDAT").unwrap_or(chunks.len());
+    let xmp_chunk = PngChunk::new(*b"iTXt", Bytes::from(chunk_data));
+    chunks.insert(insert_pos, xmp_chunk);
+
+    let output = png.encoder().bytes();
+    std::fs::write(path, &output).context("Failed to write PNG file")?;
+
+    Ok(())
+}
+
+/// Write EXIF and XMP metadata into a WebP file using img-parts RIFF.
+fn write_metadata_to_webp(
+    path: &Path,
+    ai_result: &AiResult,
+    existing: &ExifData,
+    fields: &ExifFields,
+) -> Result<()> {
+    use img_parts::riff::{RiffChunk, RiffContent};
+    use img_parts::webp::WebP;
+
+    let file_bytes = std::fs::read(path).context("Failed to read WebP file")?;
+    let mut webp = WebP::from_bytes(Bytes::from(file_bytes))
+        .map_err(|e| anyhow::anyhow!("Failed to parse WebP: {e}"))?;
+
+    // Build XMP
+    let xmp_xml = build_xmp(None,
+        ai_result.title.as_deref().filter(|_| fields.write_title && (existing.title.is_none() || fields.overwrite_existing)),
+        ai_result.description.as_deref().filter(|_| fields.write_description && (existing.description.is_none() || fields.overwrite_existing)),
+        if fields.write_tags && (existing.keywords.is_none() || fields.overwrite_existing) { ai_result.tags.as_ref() } else { None },
+    );
+
+    // Set XMP via RIFF chunk (WebP uses "XMP " chunk ID)
+    webp.remove_chunks_by_id(*b"XMP ");
+    let xmp_chunk = RiffChunk::new(*b"XMP ", RiffContent::Data(Bytes::from(xmp_xml.into_bytes())));
+    webp.chunks_mut().push(xmp_chunk);
+
+    // Build minimal EXIF TIFF for title (ImageDescription)
+    if fields.write_title {
+        if let Some(ref title) = ai_result.title {
+            if existing.title.is_none() || fields.overwrite_existing {
+                let mut metadata = Metadata::new();
+                metadata.set_tag(ExifTag::ImageDescription(title.clone()));
+                let exif_bytes = metadata.as_u8_vec(FileExtension::JPEG);
+                if exif_bytes.len() > JPEG_EXIF_OVERHEAD {
+                    webp.set_exif(Some(Bytes::from(exif_bytes[JPEG_EXIF_OVERHEAD..].to_vec())));
+                }
+            }
+        }
+    }
+
+    let output = webp.encoder().bytes();
+    std::fs::write(path, &output).context("Failed to write WebP file")?;
+
+    Ok(())
+}
+
+/// Write EXIF tags into a TIFF file using little_exif.
+fn write_tags_to_tiff(path: &Path, new_tags: &[ExifTag]) -> Result<()> {
+    let mut metadata = load_existing_metadata(path)
+        .unwrap_or_else(Metadata::new);
+
+    for tag in new_tags {
+        metadata.set_tag(tag.clone());
+    }
+
+    metadata.write_to_file(path)
+        .map_err(|e| anyhow::anyhow!("Failed to write TIFF EXIF: {e}"))?;
+
+    Ok(())
+}
+
+/// Write a sidecar .xmp file for formats that can't be written to directly (HEIC, RAW).
+fn write_sidecar_xmp(
+    path: &Path,
+    ai_result: &AiResult,
+    existing: &ExifData,
+    fields: &ExifFields,
+) -> Result<PathBuf> {
+    let sidecar_path = path.with_extension("xmp");
+
+    let xmp_xml = build_xmp(None,
+        ai_result.title.as_deref().filter(|_| fields.write_title && (existing.title.is_none() || fields.overwrite_existing)),
+        ai_result.description.as_deref().filter(|_| fields.write_description && (existing.description.is_none() || fields.overwrite_existing)),
+        if fields.write_tags && (existing.keywords.is_none() || fields.overwrite_existing) { ai_result.tags.as_ref() } else { None },
+    );
+
+    std::fs::write(&sidecar_path, xmp_xml).context("Failed to write sidecar XMP file")?;
+    log::info!("  Sidecar XMP written: {}", sidecar_path.display());
+
+    Ok(sidecar_path)
 }
 
 /// Find the position of the EXIF APP1 segment in a JPEG.
