@@ -123,6 +123,19 @@ pub struct ExifFields {
     pub overwrite_existing: bool,
 }
 
+impl Default for ExifFields {
+    fn default() -> Self {
+        Self {
+            write_title: true,
+            write_description: true,
+            write_tags: true,
+            write_gps: true,
+            write_subject: true,
+            overwrite_existing: false,
+        }
+    }
+}
+
 /// Output and behavior configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutputConfig {

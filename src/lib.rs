@@ -5,12 +5,12 @@
 //!
 //! ## Quick Start
 //!
-//! The simplest way to use the library is through the pipeline module, which handles
-//! the full read → AI analyze → write flow:
+//! The simplest way to use the library is through the [`Pipeline`](pipeline::Pipeline) builder,
+//! which handles the full read → AI analyze → write flow:
 //!
 //! ```rust,no_run
 //! use exif_ai::config::Config;
-//! use exif_ai::pipeline::{build_service_chain, collect_images, process_image};
+//! use exif_ai::pipeline::{Pipeline, collect_images};
 //! use std::path::PathBuf;
 //!
 //! #[tokio::main]
@@ -18,14 +18,16 @@
 //!     // Load config from file (contains API keys, field settings, etc.)
 //!     let config = Config::load(Some("config.json".as_ref()))?;
 //!
-//!     // Build the AI service failover chain from config
-//!     let services = build_service_chain(&config);
+//!     // Build the pipeline from config (services, fields, options)
+//!     let pipeline = Pipeline::builder()
+//!         .from_config(&config)
+//!         .build()?;
 //!
 //!     // Collect supported image files from paths (files or directories)
 //!     let images = collect_images(&[PathBuf::from("./photos")]);
 //!
 //!     for path in &images {
-//!         let result = process_image(path, &services, &config).await;
+//!         let result = pipeline.process_image(path).await;
 //!
 //!         if let Some(ref err) = result.error {
 //!             eprintln!("Error processing {}: {err}", path.display());

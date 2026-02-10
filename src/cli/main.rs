@@ -125,12 +125,7 @@ async fn main() -> Result<()> {
     }
 
     // Load config
-    let mut config = config::Config::load(cli.config.as_deref())?;
-
-    // Override dry_run from CLI flag
-    if cli.dry_run {
-        config.output.dry_run = true;
-    }
+    let config = config::Config::load(cli.config.as_deref())?;
 
     // Collect images
     let images = pipeline::collect_images(&cli.paths);
@@ -139,23 +134,27 @@ async fn main() -> Result<()> {
     }
 
     log::info!("Found {} image(s) to process", images.len());
-    if config.output.dry_run {
+    if cli.dry_run || config.output.dry_run {
         log::info!("DRY RUN — no files will be modified");
     }
 
-    // Build AI service chain
-    let services = pipeline::build_service_chain(&config);
-    if services.is_empty() {
-        anyhow::bail!(
-            "No AI services configured. Run `exif-ai --init` to create a config file, then add your API keys."
-        );
+    // Build pipeline
+    let mut builder = pipeline::Pipeline::builder().from_config(&config);
+    if cli.dry_run {
+        builder = builder.dry_run(true);
     }
+    let pipeline = match builder.build() {
+        Ok(p) => p,
+        Err(_) => {
+            anyhow::bail!(
+                "No AI services configured. Run `exif-ai --init` to create a config file, then add your API keys."
+            );
+        }
+    };
 
     log::info!(
         "AI chain: {}",
-        config
-            .enabled_services()
-            .join(" → ")
+        pipeline.service_names().join(" → ")
     );
 
     // Process each image
@@ -170,7 +169,7 @@ async fn main() -> Result<()> {
             image_path.display()
         );
 
-        let result = pipeline::process_image(image_path, &services, &config).await;
+        let result = pipeline.process_image(image_path).await;
 
         // Print result
         if let Some(ref err) = result.error {
@@ -181,7 +180,7 @@ async fn main() -> Result<()> {
             }
 
             // Show EXIF preview table
-            if config.output.dry_run {
+            if cli.dry_run || config.output.dry_run {
                 print_exif_preview(&result);
             } else {
                 let mut written = Vec::new();

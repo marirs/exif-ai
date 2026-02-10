@@ -31,7 +31,7 @@ AI-powered EXIF metadata writer — generate SEO titles, descriptions, tags, GPS
 
 ```toml
 [dependencies]
-exif-ai = { version = "0.1", default-features = false }
+exif-ai = { version = "0.2", default-features = false }
 ```
 
 ### CLI Binary (from source)
@@ -94,7 +94,7 @@ The simplest way to use the library — handles the full read → AI → write f
 
 ```rust
 use exif_ai::config::Config;
-use exif_ai::pipeline::{build_service_chain, collect_images, process_image};
+use exif_ai::pipeline::{Pipeline, collect_images};
 use std::path::PathBuf;
 
 #[tokio::main]
@@ -102,14 +102,16 @@ async fn main() -> anyhow::Result<()> {
     // Load config (contains API keys, field settings, etc.)
     let config = Config::load(Some("config.json".as_ref()))?;
 
-    // Build the AI service failover chain
-    let services = build_service_chain(&config);
+    // Build the pipeline (services, fields, options — all from config)
+    let pipeline = Pipeline::builder()
+        .from_config(&config)
+        .build()?;
 
     // Collect supported images from paths (files or directories, recursive)
     let images = collect_images(&[PathBuf::from("./photos")]);
 
     for path in &images {
-        let result = process_image(path, &services, &config).await;
+        let result = pipeline.process_image(path).await;
 
         if let Some(ref err) = result.error {
             eprintln!("Error: {err}");
@@ -180,9 +182,9 @@ async fn main() -> anyhow::Result<()> {
 |------|--------|---------|
 | [`Config`](config::Config) | `config` | All settings (API keys, fields, output) |
 | [`ExifFields`](config::ExifFields) | `config` | Which fields to write + overwrite behavior |
-| [`build_service_chain`](pipeline::build_service_chain) | `pipeline` | Create AI service failover chain from config |
+| [`Pipeline`](pipeline::Pipeline) | `pipeline` | **Main entry point** — owns services + config, runs read → AI → write |
+| [`PipelineBuilder`](pipeline::PipelineBuilder) | `pipeline` | Fluent builder for constructing a `Pipeline` |
 | [`collect_images`](pipeline::collect_images) | `pipeline` | Walk paths, filter by supported extensions |
-| [`process_image`](pipeline::process_image) | `pipeline` | **Main entry point** — read → AI → write |
 | [`ProcessResult`](pipeline::ProcessResult) | `pipeline` | What was written, errors, sidecar path |
 | [`ImageKind`](pipeline::ImageKind) | `pipeline` | Format detection (Jpeg, Png, WebP, Tiff, Sidecar) |
 | [`AiResult`](ai::AiResult) | `ai` | AI output (title, description, tags, gps, subject) |
@@ -199,6 +201,10 @@ Run `exif-ai-cli --init` to generate a default `config.json` in the same directo
 ```json
 {
   "ai_services": {
+    "local": {
+      "model_path": "./models",
+      "enabled": true
+    },
     "openai": {
       "api_key": "sk-...",
       "model": "gpt-4o-mini",
@@ -213,10 +219,6 @@ Run `exif-ai-cli --init` to generate a default `config.json` in the same directo
       "account_id": "",
       "api_token": "",
       "model": "@cf/llava-hf/llava-1.5-7b-hf",
-      "enabled": false
-    },
-    "local": {
-      "model_path": "",
       "enabled": false
     }
   },
