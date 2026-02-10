@@ -450,7 +450,7 @@ impl App {
                         // AI results
                         if has_result {
                             let result = entry.result.as_ref().unwrap();
-                            Self::show_ai_results(ui, result);
+                            Self::show_ai_results(ui, result, self.dry_run);
                         } else if processing {
                             ui.horizontal(|ui| {
                                 ui.spinner();
@@ -529,16 +529,36 @@ impl App {
             });
     }
 
-    fn show_ai_results(ui: &mut egui::Ui, result: &ProcessResult) {
+    fn show_ai_results(ui: &mut egui::Ui, result: &ProcessResult, dry_run: bool) {
         if let Some(ref err) = result.error {
             ui.colored_label(egui::Color32::from_rgb(220, 50, 50), format!("Error: {err}"));
             return;
         }
 
+        // Status badge helper
+        let status_label = |ui: &mut egui::Ui, written: bool| {
+            if written {
+                if dry_run {
+                    ui.label(
+                        egui::RichText::new("⟡ would write")
+                            .color(egui::Color32::from_rgb(100, 160, 255))
+                            .italics(),
+                    );
+                } else {
+                    ui.colored_label(egui::Color32::from_rgb(50, 180, 50), "✓ written");
+                }
+            }
+        };
+
         if let Some(ref service) = result.ai_service_used {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("AI Service:").strong());
-                ui.label(service);
+                ui.label(egui::RichText::new("AI Service:").strong().size(15.0));
+                ui.label(
+                    egui::RichText::new(service)
+                        .strong()
+                        .size(15.0)
+                        .color(egui::Color32::from_rgb(100, 180, 255)),
+                );
             });
         }
         ui.add_space(8.0);
@@ -546,15 +566,13 @@ impl App {
         if let Some(ref ai) = result.ai_result {
             egui::Grid::new("ai_results_grid")
                 .num_columns(2)
-                .spacing([12.0, 6.0])
+                .spacing([12.0, 12.0])
                 .show(ui, |ui| {
                     if let Some(ref title) = ai.title {
                         ui.label(egui::RichText::new("Title").strong());
                         ui.horizontal(|ui| {
                             ui.label(title);
-                            if result.title_written {
-                                ui.colored_label(egui::Color32::from_rgb(50, 180, 50), "✓ written");
-                            }
+                            status_label(ui, result.title_written);
                         });
                         ui.end_row();
                     }
@@ -563,9 +581,7 @@ impl App {
                         ui.label(egui::RichText::new("Description").strong());
                         ui.horizontal_wrapped(|ui| {
                             ui.label(desc);
-                            if result.description_written {
-                                ui.colored_label(egui::Color32::from_rgb(50, 180, 50), "✓ written");
-                            }
+                            status_label(ui, result.description_written);
                         });
                         ui.end_row();
                     }
@@ -580,9 +596,7 @@ impl App {
                                         .color(egui::Color32::WHITE),
                                 );
                             }
-                            if result.tags_written {
-                                ui.colored_label(egui::Color32::from_rgb(50, 180, 50), "✓ written");
-                            }
+                            status_label(ui, result.tags_written);
                         });
                         ui.end_row();
                     }
@@ -591,9 +605,7 @@ impl App {
                         ui.label(egui::RichText::new("GPS").strong());
                         ui.horizontal(|ui| {
                             ui.label(format!("{:.6}, {:.6}", gps.latitude, gps.longitude));
-                            if result.gps_written {
-                                ui.colored_label(egui::Color32::from_rgb(50, 180, 50), "✓ written");
-                            }
+                            status_label(ui, result.gps_written);
                         });
                         ui.end_row();
                     }
@@ -603,9 +615,7 @@ impl App {
                             ui.label(egui::RichText::new("Subject").strong());
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(subjects.join(", "));
-                                if result.subject_written {
-                                    ui.colored_label(egui::Color32::from_rgb(50, 180, 50), "✓ written");
-                                }
+                                status_label(ui, result.subject_written);
                             });
                             ui.end_row();
                         }
