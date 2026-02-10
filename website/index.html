@@ -1,0 +1,1358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exif AI — AI-Powered EXIF Metadata Writer</title>
+    <meta name="description" content="Generate SEO titles, descriptions, tags, GPS coordinates, and subject data for images using AI vision models. Desktop GUI & CLI for macOS, Windows, and Linux.">
+    <link rel="icon" type="image/png" href="assets/icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --bg-card: #1c2128;
+            --border: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent: #58a6ff;
+            --accent-hover: #79c0ff;
+            --accent-subtle: rgba(56, 139, 253, 0.15);
+            --green: #3fb950;
+            --green-subtle: rgba(63, 185, 80, 0.15);
+            --purple: #bc8cff;
+            --purple-subtle: rgba(188, 140, 255, 0.15);
+            --orange: #f0883e;
+            --orange-subtle: rgba(240, 136, 62, 0.15);
+            --pink: #f778ba;
+            --gradient-hero: linear-gradient(135deg, #58a6ff 0%, #bc8cff 50%, #f778ba 100%);
+            --gradient-btn: linear-gradient(135deg, #238636 0%, #2ea043 100%);
+            --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.4);
+            --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.5);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --radius-lg: 16px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── Nav ─────────────────────────────────────────────── */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            background: rgba(13, 17, 23, 0.8);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+        }
+
+        .nav-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 64px;
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: var(--text-primary);
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        .nav-brand img { width: 32px; height: 32px; border-radius: 8px; }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover { color: var(--text-primary); }
+
+        .nav-github {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary) !important;
+            font-size: 13px !important;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .nav-github:hover {
+            border-color: var(--text-secondary);
+            background: var(--bg-tertiary);
+        }
+
+        .nav-github svg { width: 18px; height: 18px; fill: var(--text-primary); }
+
+        /* ── Hero ────────────────────────────────────────────── */
+        .hero {
+            padding: 160px 24px 80px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -200px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 800px;
+            height: 800px;
+            background: radial-gradient(circle, rgba(88, 166, 255, 0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            background: var(--accent-subtle);
+            border: 1px solid rgba(56, 139, 253, 0.3);
+            border-radius: 24px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--accent);
+            margin-bottom: 24px;
+        }
+
+        .hero h1 {
+            font-size: clamp(40px, 6vw, 72px);
+            font-weight: 800;
+            line-height: 1.1;
+            letter-spacing: -0.03em;
+            margin-bottom: 20px;
+        }
+
+        .hero h1 .gradient {
+            background: var(--gradient-hero);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero-sub {
+            font-size: clamp(16px, 2vw, 20px);
+            color: var(--text-secondary);
+            max-width: 640px;
+            margin: 0 auto 40px;
+            line-height: 1.6;
+        }
+
+        .hero-actions {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        /* ── Download Button ─────────────────────────────────── */
+        .download-group {
+            position: relative;
+            display: inline-flex;
+        }
+
+        .btn-download {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 28px;
+            background: var(--gradient-btn);
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: var(--radius) 0 0 var(--radius);
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .btn-download:hover { opacity: 0.9; }
+        .btn-download:active { transform: scale(0.98); }
+
+        .btn-download svg { width: 20px; height: 20px; }
+
+        .btn-dropdown-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 14px 14px;
+            background: #2ea043;
+            color: #fff;
+            border: none;
+            border-left: 1px solid rgba(255,255,255,0.2);
+            border-radius: 0 var(--radius) var(--radius) 0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-dropdown-toggle:hover { background: #3fb950; }
+
+        .btn-dropdown-toggle svg { width: 16px; height: 16px; }
+
+        .dropdown-menu {
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 0;
+            right: 0;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-lg);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-8px);
+            transition: all 0.2s;
+            z-index: 50;
+            min-width: 260px;
+        }
+
+        .dropdown-menu.open {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .dropdown-header {
+            padding: 10px 16px 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+        }
+
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            color: var(--text-primary);
+            text-decoration: none;
+            font-size: 14px;
+            transition: background 0.15s;
+        }
+
+        .dropdown-item:hover { background: var(--bg-tertiary); }
+
+        .dropdown-item .arch {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-left: auto;
+        }
+
+        .dropdown-divider {
+            height: 1px;
+            background: var(--border);
+            margin: 4px 0;
+        }
+
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 28px;
+            background: transparent;
+            color: var(--text-primary);
+            font-size: 16px;
+            font-weight: 600;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            cursor: pointer;
+            text-decoration: none;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--text-secondary);
+            background: var(--bg-secondary);
+        }
+
+        /* ── OS Tabs ─────────────────────────────────────────── */
+        .os-indicator {
+            margin-top: 16px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .os-indicator span { color: var(--accent); font-weight: 500; }
+
+        /* ── Screenshot Showcase ─────────────────────────────── */
+        .showcase {
+            padding: 40px 24px 100px;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .screenshot-frame {
+            position: relative;
+            border-radius: 16px;
+            overflow: hidden;
+            padding: 2px;
+            background: linear-gradient(135deg, #58a6ff 0%, #bc8cff 40%, #f778ba 70%, #ff7eb3 100%);
+            box-shadow: 0 24px 80px rgba(0,0,0,0.4), 0 0 40px rgba(188, 140, 255, 0.15), 0 0 80px rgba(247, 120, 186, 0.1);
+        }
+
+        .screenshot-frame-inner {
+            border-radius: 14px;
+            overflow: hidden;
+            background: var(--bg-primary);
+        }
+
+        .screenshot-frame img {
+            width: 100%;
+            display: block;
+        }
+
+        /* ── Section Styles ──────────────────────────────────── */
+        .section {
+            padding: 100px 24px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 64px;
+        }
+
+        .section-label {
+            display: inline-block;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent);
+            margin-bottom: 12px;
+        }
+
+        .section-title {
+            font-size: clamp(28px, 4vw, 40px);
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 16px;
+        }
+
+        .section-desc {
+            font-size: 17px;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* ── Features Grid ───────────────────────────────────── */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px;
+        }
+
+        .feature-card {
+            padding: 32px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            transition: border-color 0.3s, transform 0.2s;
+        }
+
+        .feature-card:hover {
+            border-color: var(--text-muted);
+            transform: translateY(-2px);
+        }
+
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            margin-bottom: 16px;
+        }
+
+        .feature-icon.blue { background: var(--accent-subtle); }
+        .feature-icon.green { background: var(--green-subtle); }
+        .feature-icon.purple { background: var(--purple-subtle); }
+        .feature-icon.orange { background: var(--orange-subtle); }
+
+        .feature-card h3 {
+            font-size: 17px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .feature-card p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* ── CLI Section ─────────────────────────────────────── */
+        .cli-section {
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .cli-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 48px;
+            align-items: start;
+        }
+
+        .cli-info h3 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .cli-info p {
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+            font-size: 15px;
+        }
+
+        .cli-downloads {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .cli-download-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            text-decoration: none;
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .cli-download-item:hover { border-color: var(--accent); }
+
+        .cli-download-item .platform { font-weight: 600; }
+        .cli-download-item .arch-label { color: var(--text-muted); font-size: 12px; }
+
+        .code-block {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+
+        .code-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .code-header .dots {
+            display: flex;
+            gap: 6px;
+        }
+
+        .code-header .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .code-header .dot.red { background: #ff5f57; }
+        .code-header .dot.yellow { background: #febc2e; }
+        .code-header .dot.green { background: #28c840; }
+
+        .code-body {
+            padding: 20px;
+            overflow-x: auto;
+        }
+
+        .code-body pre {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            color: var(--text-secondary);
+        }
+
+        .code-body .cmd { color: var(--green); }
+        .code-body .flag { color: var(--accent); }
+        .code-body .comment { color: var(--text-muted); }
+        .code-body .arg { color: var(--orange); }
+
+        /* ── Formats Section ─────────────────────────────────── */
+        .formats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        .formats-table th {
+            text-align: left;
+            padding: 12px 16px;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .formats-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        .formats-table tr:hover td { background: var(--bg-secondary); }
+
+        .formats-table .format-name { color: var(--text-primary); font-weight: 600; }
+        .formats-table .check { color: var(--green); }
+        .formats-table .strategy-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .strategy-badge.native { background: var(--green-subtle); color: var(--green); }
+        .strategy-badge.sidecar { background: var(--purple-subtle); color: var(--purple); }
+
+        /* ── Pricing / Services ──────────────────────────────── */
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+        }
+
+        .service-card {
+            padding: 24px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            text-align: center;
+        }
+
+        .service-card h4 {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .service-card .price {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--green);
+            margin: 12px 0;
+        }
+
+        .service-card .price-note {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .service-card p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 8px;
+        }
+
+        /* ── Footer ──────────────────────────────────────────── */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 48px 24px;
+        }
+
+        .footer-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .footer-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .footer-left img { width: 24px; height: 24px; border-radius: 6px; }
+
+        .footer-links {
+            display: flex;
+            gap: 24px;
+            list-style: none;
+        }
+
+        .footer-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 13px;
+            transition: color 0.2s;
+        }
+
+        .footer-links a:hover { color: var(--text-primary); }
+
+        /* ── Responsive ──────────────────────────────────────── */
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .cli-grid { grid-template-columns: 1fr; }
+            .features-grid { grid-template-columns: 1fr; }
+            .footer-inner { flex-direction: column; gap: 24px; text-align: center; }
+            .hero { padding: 120px 20px 60px; }
+        }
+
+        /* ── Platform Tabs ────────────────────────────────────── */
+        .platform-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 4px;
+            margin-bottom: 32px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 4px;
+            display: inline-flex;
+        }
+
+        .platform-tabs-wrapper {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .platform-tab {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: transparent;
+            color: var(--text-secondary);
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .platform-tab:hover {
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+        }
+
+        .platform-tab.active {
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+
+        .platform-tab svg { width: 18px; height: 18px; }
+
+        .platform-content {
+            display: none;
+        }
+
+        .platform-content.active {
+            display: block;
+        }
+
+        .platform-install {
+            margin-top: 32px;
+            text-align: center;
+        }
+
+        .platform-install-card {
+            display: inline-block;
+            max-width: 600px;
+            width: 100%;
+            text-align: left;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px 28px;
+        }
+
+        .platform-install-card h4 {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .platform-install-card p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+
+        .platform-install-card .install-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .install-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            background: var(--gradient-btn);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            text-decoration: none;
+            transition: opacity 0.2s;
+        }
+
+        .install-btn:hover { opacity: 0.9; }
+
+        .install-btn.secondary {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+        }
+
+        .install-btn.secondary:hover { border-color: var(--text-muted); }
+
+        .install-btn svg { width: 16px; height: 16px; }
+
+        .screenshot-label {
+            text-align: center;
+            margin-top: 16px;
+            font-size: 13px;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        /* ── Animations ──────────────────────────────────────── */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(24px);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+
+<!-- ── Navigation ──────────────────────────────────────────── -->
+<nav>
+    <div class="nav-inner">
+        <a href="#" class="nav-brand">
+            <img src="assets/icon.png" alt="Exif AI">
+            Exif AI
+        </a>
+        <ul class="nav-links">
+            <li><a href="#features">Features</a></li>
+            <li><a href="#app">App</a></li>
+            <li><a href="#cli">CLI</a></li>
+            <li><a href="#formats">Formats</a></li>
+            <li>
+                <a href="https://github.com/marirs/exif-ai" class="nav-github" target="_blank">
+                    <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                    GitHub
+                </a>
+            </li>
+        </ul>
+    </div>
+</nav>
+
+<!-- ── Hero ────────────────────────────────────────────────── -->
+<section class="hero">
+    <div class="hero-badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        Open Source &middot; MIT Licensed
+    </div>
+    <h1>AI-Powered <span class="gradient">EXIF Metadata</span><br>Writer</h1>
+    <p class="hero-sub">
+        Generate SEO titles, descriptions, tags, GPS coordinates, and subject data for your images using AI vision models. Desktop app & CLI.
+    </p>
+
+    <div class="hero-actions">
+        <div class="download-group" id="downloadGroup">
+            <a href="#" class="btn-download" id="downloadBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span id="downloadLabel">Download for macOS</span>
+            </a>
+            <button class="btn-dropdown-toggle" id="dropdownToggle" aria-label="More download options">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="dropdown-menu" id="dropdownMenu">
+                <div class="dropdown-header">Desktop GUI</div>
+                <div id="guiDownloads"></div>
+                <div class="dropdown-divider"></div>
+                <div class="dropdown-header">Command Line (CLI)</div>
+                <div id="cliDownloads"></div>
+            </div>
+        </div>
+
+        <a href="#app" class="btn-secondary">
+            See it in action
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+    </div>
+
+    <p class="os-indicator" id="osIndicator">Detected: <span id="osName">macOS</span> · <a href="#" id="allDownloadsLink" style="color:var(--accent);text-decoration:none;">View all platforms</a></p>
+</section>
+
+<!-- ── Screenshot Showcase ─────────────────────────────────── -->
+<section class="showcase fade-in" id="app">
+    <div class="platform-tabs-wrapper">
+        <div class="platform-tabs">
+            <button class="platform-tab active" data-platform="macos">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                macOS
+            </button>
+            <button class="platform-tab" data-platform="windows">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 12V6.75l6-1.32v6.48L3 12zm6.98.09l.02 6.63-6.98-1.01V12.1l6.96-.01zM10 5.29L20 3.5v8.44H10V5.29zm0 7.27h10v8.23l-10-1.54V12.56z"/></svg>
+                Windows
+            </button>
+            <button class="platform-tab" data-platform="linux">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                Linux
+            </button>
+        </div>
+    </div>
+
+    <!-- macOS -->
+    <div class="platform-content active" data-platform="macos">
+        <div class="screenshot-frame">
+            <div class="screenshot-frame-inner">
+                <img src="assets/screenshot-macos.png" alt="Exif AI Desktop App — macOS">
+            </div>
+        </div>
+        <p class="screenshot-label">Exif AI on macOS — native .app bundle</p>
+        <div class="platform-install">
+            <div class="platform-install-card">
+                <h4>Install on macOS</h4>
+                <p>Download the .app bundle, extract, and drag to Applications. Supports Apple Silicon and Intel.</p>
+                <div class="install-buttons">
+                    <a href="#" class="install-btn" id="macosDownloadSilicon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Apple Silicon
+                    </a>
+                    <a href="#" class="install-btn secondary" id="macosDownloadIntel">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Intel
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Windows -->
+    <div class="platform-content" data-platform="windows">
+        <div class="screenshot-frame">
+            <div class="screenshot-frame-inner">
+                <img src="assets/screenshot-windows.png" alt="Exif AI Desktop App — Windows">
+            </div>
+        </div>
+        <p class="screenshot-label">Exif AI on Windows — native .exe with embedded icon</p>
+        <div class="platform-install">
+            <div class="platform-install-card">
+                <h4>Install on Windows</h4>
+                <p>Download the .zip, extract, and run exif-ai-gui.exe. No installer needed — launches without a console window.</p>
+                <div class="install-buttons">
+                    <a href="#" class="install-btn" id="windowsDownloadX64">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        x86_64
+                    </a>
+                    <a href="#" class="install-btn secondary" id="windowsDownloadArm">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        ARM64
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Linux -->
+    <div class="platform-content" data-platform="linux">
+        <div class="screenshot-frame">
+            <div class="screenshot-frame-inner">
+                <img src="assets/screenshot-linux.png" alt="Exif AI Desktop App — Linux">
+            </div>
+        </div>
+        <p class="screenshot-label">Exif AI on Linux — includes .desktop file for app menu integration</p>
+        <div class="platform-install">
+            <div class="platform-install-card">
+                <h4>Install on Linux</h4>
+                <p>Download the tarball containing the binary, .desktop file, and icon. Copy to standard paths for desktop integration.</p>
+                <div class="install-buttons">
+                    <a href="#" class="install-btn" id="linuxDownloadX64">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Linux x86_64
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── Features ────────────────────────────────────────────── -->
+<section class="section fade-in" id="features">
+    <div class="section-header">
+        <div class="section-label">Features</div>
+        <h2 class="section-title">Everything you need for image metadata</h2>
+        <p class="section-desc">Powerful AI analysis with a beautiful interface. Works offline, supports 20+ formats, writes to three metadata standards.</p>
+    </div>
+
+    <div class="features-grid">
+        <div class="feature-card">
+            <div class="feature-icon blue">🧠</div>
+            <h3>AI Vision Analysis</h3>
+            <p>Send images to GPT-4o, Gemini, Cloudflare Workers AI, or a local BLIP model for intelligent metadata generation.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon green">🔒</div>
+            <h3>Local AI (Offline)</h3>
+            <p>Run a BLIP model on-device — no API keys, no network, fully private. ~5s per image on CPU.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon purple">🔄</div>
+            <h3>Multi-Service Failover</h3>
+            <p>Configure a chain of AI services. If one fails, the next is tried automatically. Local → OpenAI → Gemini → Cloudflare.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon orange">📷</div>
+            <h3>20+ Image Formats</h3>
+            <p>JPEG, PNG, WebP, TIFF, HEIC/HEIF, AVIF, and 10+ RAW formats including Canon CR3, Nikon NEF, Sony ARW, and more.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon blue">✍️</div>
+            <h3>Triple-Standard Writing</h3>
+            <p>Writes to EXIF, XMP, and IPTC simultaneously for maximum compatibility across macOS, Windows, Linux, and Adobe tools.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon green">📍</div>
+            <h3>GPS Intelligence</h3>
+            <p>Only writes GPS when the image has no existing coordinates AND the AI identifies a known real-world location.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon purple">🐦</div>
+            <h3>Subject Detection</h3>
+            <p>Identifies known people, bird species, animal species, and landmarks — written as structured EXIF subject data.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon orange">🖥️</div>
+            <h3>Desktop GUI</h3>
+            <p>Native app with drag-and-drop, image preview, EXIF viewer, settings panel, and real-time AI processing status.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon blue">⚡</div>
+            <h3>Batch Processing</h3>
+            <p>Process single files, multiple files, or entire directories recursively. JSON output for scripting and automation.</p>
+        </div>
+    </div>
+</section>
+
+<!-- ── CLI Section ─────────────────────────────────────────── -->
+<section class="cli-section fade-in" id="cli">
+    <div class="section" style="padding-top:80px;padding-bottom:80px;">
+        <div class="section-header">
+            <div class="section-label">Command Line</div>
+            <h2 class="section-title">Powerful CLI for automation</h2>
+            <p class="section-desc">Process images from the terminal. Supports dry run, JSON output, batch processing, and more.</p>
+        </div>
+
+        <div class="cli-grid">
+            <div>
+                <div class="code-block">
+                    <div class="code-header">
+                        <div class="dots">
+                            <div class="dot red"></div>
+                            <div class="dot yellow"></div>
+                            <div class="dot green"></div>
+                        </div>
+                        Terminal
+                    </div>
+                    <div class="code-body">
+<pre><span class="comment"># Generate a default config file</span>
+<span class="cmd">exif-ai-cli</span> <span class="flag">--init</span>
+
+<span class="comment"># Preview what AI would write (dry run)</span>
+<span class="cmd">exif-ai-cli</span> <span class="flag">--dry-run</span> <span class="arg">photo.jpg</span>
+
+<span class="comment"># Process for real</span>
+<span class="cmd">exif-ai-cli</span> <span class="arg">photo.jpg</span>
+
+<span class="comment"># Process an entire folder</span>
+<span class="cmd">exif-ai-cli</span> <span class="arg">./photos/</span>
+
+<span class="comment"># JSON output for scripting</span>
+<span class="cmd">exif-ai-cli</span> <span class="flag">--json</span> <span class="arg">photo1.jpg photo2.jpg</span>
+
+<span class="comment"># Use local AI — no API keys needed</span>
+<span class="cmd">exif-ai-cli</span> <span class="flag">--download-model</span>
+<span class="cmd">exif-ai-cli</span> <span class="arg">photo.jpg</span></pre>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cli-info">
+                <h3>Install from source</h3>
+                <p>Requires Rust 1.85+. Clone the repo and build the release binary.</p>
+                <div class="code-block" style="margin-bottom:32px;">
+                    <div class="code-body">
+<pre><span class="cmd">git clone</span> <span class="arg">https://github.com/marirs/exif-ai.git</span>
+<span class="cmd">cd</span> exif-ai
+<span class="cmd">cargo build</span> <span class="flag">--release</span></pre>
+                    </div>
+                </div>
+
+                <h3>Download CLI binaries</h3>
+                <p>Pre-built binaries for all platforms.</p>
+                <div class="cli-downloads" id="cliDownloadsList"></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ── Supported Formats ───────────────────────────────────── -->
+<section class="section fade-in" id="formats">
+    <div class="section-header">
+        <div class="section-label">Compatibility</div>
+        <h2 class="section-title">20+ image formats supported</h2>
+        <p class="section-desc">Native EXIF writing for common formats, XMP sidecar for RAW and HEIC.</p>
+    </div>
+
+    <div style="overflow-x:auto;">
+        <table class="formats-table">
+            <thead>
+                <tr>
+                    <th>Format</th>
+                    <th>Extensions</th>
+                    <th>Read EXIF</th>
+                    <th>Write Metadata</th>
+                    <th>Strategy</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td class="format-name">JPEG</td><td>.jpg, .jpeg</td><td class="check">✓</td><td>EXIF + XMP + IPTC</td><td><span class="strategy-badge native">Native</span></td></tr>
+                <tr><td class="format-name">PNG</td><td>.png</td><td class="check">✓</td><td>XMP (iTXt)</td><td><span class="strategy-badge native">Native</span></td></tr>
+                <tr><td class="format-name">WebP</td><td>.webp</td><td class="check">✓</td><td>EXIF + XMP (RIFF)</td><td><span class="strategy-badge native">Native</span></td></tr>
+                <tr><td class="format-name">TIFF</td><td>.tif, .tiff</td><td class="check">✓</td><td>EXIF</td><td><span class="strategy-badge native">Native</span></td></tr>
+                <tr><td class="format-name">HEIC / HEIF</td><td>.heic, .heif</td><td class="check">✓</td><td>XMP sidecar</td><td><span class="strategy-badge sidecar">Sidecar</span></td></tr>
+                <tr><td class="format-name">AVIF</td><td>.avif</td><td class="check">✓</td><td>XMP sidecar</td><td><span class="strategy-badge sidecar">Sidecar</span></td></tr>
+                <tr><td class="format-name">Canon RAW</td><td>.cr2, .cr3</td><td class="check">✓</td><td>XMP sidecar</td><td><span class="strategy-badge sidecar">Sidecar</span></td></tr>
+                <tr><td class="format-name">Adobe DNG</td><td>.dng</td><td class="check">✓</td><td>XMP sidecar</td><td><span class="strategy-badge sidecar">Sidecar</span></td></tr>
+                <tr><td class="format-name">Nikon RAW</td><td>.nef</td><td class="check">✓</td><td>XMP sidecar</td><td><span class="strategy-badge sidecar">Sidecar</span></td></tr>
+                <tr><td class="format-name">Sony RAW</td><td>.arw</td><td class="check">✓</td><td>XMP sidecar</td><td><span class="strategy-badge sidecar">Sidecar</span></td></tr>
+                <tr><td class="format-name">Fujifilm RAW</td><td>.raf</td><td class="check">✓</td><td>XMP sidecar</td><td><span class="strategy-badge sidecar">Sidecar</span></td></tr>
+                <tr><td class="format-name">Olympus RAW</td><td>.orf</td><td class="check">✓</td><td>XMP sidecar</td><td><span class="strategy-badge sidecar">Sidecar</span></td></tr>
+                <tr><td class="format-name">Panasonic RAW</td><td>.rw2</td><td class="check">✓</td><td>XMP sidecar</td><td><span class="strategy-badge sidecar">Sidecar</span></td></tr>
+                <tr><td class="format-name">Pentax RAW</td><td>.pef</td><td class="check">✓</td><td>XMP sidecar</td><td><span class="strategy-badge sidecar">Sidecar</span></td></tr>
+                <tr><td class="format-name">Samsung RAW</td><td>.srw</td><td class="check">✓</td><td>XMP sidecar</td><td><span class="strategy-badge sidecar">Sidecar</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- ── AI Services ─────────────────────────────────────────── -->
+<section class="section fade-in" id="services">
+    <div class="section-header">
+        <div class="section-label">AI Services</div>
+        <h2 class="section-title">Choose your AI backend</h2>
+        <p class="section-desc">Use one or chain them together for automatic failover.</p>
+    </div>
+
+    <div class="services-grid">
+        <div class="service-card">
+            <h4>Local BLIP</h4>
+            <div class="price">Free</div>
+            <div class="price-note">Forever · On-device</div>
+            <p>~5s/image on CPU. No network needed. ~1.75 GB model download.</p>
+        </div>
+        <div class="service-card">
+            <h4>OpenAI GPT-4o</h4>
+            <div class="price">~$0.001</div>
+            <div class="price-note">Per image</div>
+            <p>Highest quality results. Requires API key.</p>
+        </div>
+        <div class="service-card">
+            <h4>Google Gemini</h4>
+            <div class="price">Free tier</div>
+            <div class="price-note">15 req/min · 1,500/day</div>
+            <p>Great balance of quality and cost.</p>
+        </div>
+        <div class="service-card">
+            <h4>Cloudflare AI</h4>
+            <div class="price">Free tier</div>
+            <div class="price-note">~100-200 images/day</div>
+            <p>Free but lower quality (LLaVA model).</p>
+        </div>
+    </div>
+</section>
+
+<!-- ── Footer ──────────────────────────────────────────────── -->
+<footer>
+    <div class="footer-inner">
+        <div class="footer-left">
+            <img src="assets/icon.png" alt="Exif AI">
+            <span>Exif AI &middot; MIT License &middot; by <a href="https://github.com/marirs" style="color:var(--accent);text-decoration:none;">Sriram Govindan</a></span>
+        </div>
+        <ul class="footer-links">
+            <li><a href="https://github.com/marirs/exif-ai" target="_blank">GitHub</a></li>
+            <li><a href="https://github.com/marirs/exif-ai/releases" target="_blank">Releases</a></li>
+            <li><a href="https://github.com/marirs/exif-ai/issues" target="_blank">Issues</a></li>
+            <li><a href="https://crates.io/crates/exif-ai" target="_blank">Crates.io</a></li>
+        </ul>
+    </div>
+</footer>
+
+<script>
+// ── Configuration ────────────────────────────────────────────
+const REPO = 'marirs/exif-ai';
+const LATEST_TAG = 'v0.2.1';
+
+const DOWNLOADS = {
+    gui: {
+        macos: [
+            { label: 'macOS (Apple Silicon)', arch: 'aarch64', file: `exif-ai-gui-macos-aarch64.app.tar.gz` },
+            { label: 'macOS (Intel)', arch: 'x86_64', file: `exif-ai-gui-macos-x86_64.app.tar.gz` },
+        ],
+        windows: [
+            { label: 'Windows (x86_64)', arch: 'x86_64', file: `exif-ai-gui-windows-x86_64.zip` },
+            { label: 'Windows (ARM64)', arch: 'aarch64', file: `exif-ai-gui-windows-aarch64.zip` },
+        ],
+        linux: [
+            { label: 'Linux (x86_64)', arch: 'x86_64', file: `exif-ai-gui-linux-x86_64.tar.gz` },
+        ],
+    },
+    cli: {
+        macos: [
+            { label: 'macOS (Apple Silicon)', arch: 'aarch64', file: `exif-ai-cli-macos-aarch64.tar.gz` },
+            { label: 'macOS (Intel)', arch: 'x86_64', file: `exif-ai-cli-macos-x86_64.tar.gz` },
+        ],
+        windows: [
+            { label: 'Windows (x86_64)', arch: 'x86_64', file: `exif-ai-cli-windows-x86_64.zip` },
+            { label: 'Windows (ARM64)', arch: 'aarch64', file: `exif-ai-cli-windows-aarch64.zip` },
+        ],
+        linux: [
+            { label: 'Linux (x86_64)', arch: 'x86_64', file: `exif-ai-cli-linux-x86_64.tar.gz` },
+            { label: 'Linux (ARM64)', arch: 'aarch64', file: `exif-ai-cli-linux-aarch64.tar.gz` },
+        ],
+    },
+};
+
+function releaseUrl(file) {
+    return `https://github.com/${REPO}/releases/download/${LATEST_TAG}/${file}`;
+}
+
+// ── OS Detection ─────────────────────────────────────────────
+function detectOS() {
+    const ua = navigator.userAgent.toLowerCase();
+    const platform = navigator.platform?.toLowerCase() || '';
+    if (ua.includes('mac') || platform.includes('mac')) return 'macos';
+    if (ua.includes('win') || platform.includes('win')) return 'windows';
+    return 'linux';
+}
+
+const userOS = detectOS();
+
+// ── Populate Downloads ───────────────────────────────────────
+function buildDropdownItems(container, items) {
+    items.forEach(item => {
+        const a = document.createElement('a');
+        a.href = releaseUrl(item.file);
+        a.className = 'dropdown-item';
+        a.innerHTML = `${item.label} <span class="arch">${item.arch}</span>`;
+        container.appendChild(a);
+    });
+}
+
+function init() {
+    const osNames = { macos: 'macOS', windows: 'Windows', linux: 'Linux' };
+    const osIcons = { macos: '🍎', windows: '🪟', linux: '🐧' };
+
+    // Set hero download button
+    const downloadBtn = document.getElementById('downloadBtn');
+    const downloadLabel = document.getElementById('downloadLabel');
+    const osNameEl = document.getElementById('osName');
+
+    downloadLabel.textContent = `Download for ${osNames[userOS]}`;
+    osNameEl.textContent = osNames[userOS];
+
+    // Primary download link — first GUI option for detected OS
+    const primaryDownloads = DOWNLOADS.gui[userOS];
+    if (primaryDownloads && primaryDownloads.length > 0) {
+        downloadBtn.href = releaseUrl(primaryDownloads[0].file);
+    }
+
+    // Build dropdown — all GUI options first, then all CLI
+    const guiContainer = document.getElementById('guiDownloads');
+    const cliContainer = document.getElementById('cliDownloads');
+
+    // GUI downloads for all platforms
+    Object.entries(DOWNLOADS.gui).forEach(([os, items]) => {
+        items.forEach(item => {
+            const a = document.createElement('a');
+            a.href = releaseUrl(item.file);
+            a.className = 'dropdown-item';
+            a.innerHTML = `${osIcons[os]} ${item.label} <span class="arch">${item.arch}</span>`;
+            guiContainer.appendChild(a);
+        });
+    });
+
+    // CLI downloads for all platforms
+    Object.entries(DOWNLOADS.cli).forEach(([os, items]) => {
+        items.forEach(item => {
+            const a = document.createElement('a');
+            a.href = releaseUrl(item.file);
+            a.className = 'dropdown-item';
+            a.innerHTML = `${osIcons[os]} ${item.label} <span class="arch">${item.arch}</span>`;
+            cliContainer.appendChild(a);
+        });
+    });
+
+    // CLI downloads list in CLI section
+    const cliList = document.getElementById('cliDownloadsList');
+    // Show detected OS first, then others
+    const osOrder = [userOS, ...Object.keys(DOWNLOADS.cli).filter(k => k !== userOS)];
+    osOrder.forEach(os => {
+        DOWNLOADS.cli[os].forEach(item => {
+            const a = document.createElement('a');
+            a.href = releaseUrl(item.file);
+            a.className = 'cli-download-item';
+            a.innerHTML = `<span class="platform">${osIcons[os]} ${item.label}</span><span class="arch-label">.tar.gz</span>`;
+            cliList.appendChild(a);
+        });
+    });
+}
+
+// ── Dropdown Toggle ──────────────────────────────────────────
+const dropdownToggle = document.getElementById('dropdownToggle');
+const dropdownMenu = document.getElementById('dropdownMenu');
+const allDownloadsLink = document.getElementById('allDownloadsLink');
+
+dropdownToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dropdownMenu.classList.toggle('open');
+});
+
+allDownloadsLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Scroll to the app section and show all platforms
+    document.getElementById('app').scrollIntoView({ behavior: 'smooth' });
+    dropdownMenu.classList.remove('open');
+});
+
+document.addEventListener('click', () => {
+    dropdownMenu.classList.remove('open');
+});
+
+dropdownMenu.addEventListener('click', (e) => {
+    e.stopPropagation();
+});
+
+// ── Platform Tabs ────────────────────────────────────────────
+const platformTabs = document.querySelectorAll('.platform-tab');
+const platformContents = document.querySelectorAll('.platform-content');
+
+function switchPlatform(platform) {
+    platformTabs.forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.platform === platform);
+    });
+    platformContents.forEach(content => {
+        content.classList.toggle('active', content.dataset.platform === platform);
+    });
+}
+
+platformTabs.forEach(tab => {
+    tab.addEventListener('click', () => switchPlatform(tab.dataset.platform));
+});
+
+// Auto-select detected OS tab
+switchPlatform(userOS);
+
+// ── Platform Download Buttons ────────────────────────────────
+function setDownloadLinks() {
+    const el = (id) => document.getElementById(id);
+    el('macosDownloadSilicon').href = releaseUrl('exif-ai-gui-macos-aarch64.app.tar.gz');
+    el('macosDownloadIntel').href = releaseUrl('exif-ai-gui-macos-x86_64.app.tar.gz');
+    el('windowsDownloadX64').href = releaseUrl('exif-ai-gui-windows-x86_64.zip');
+    el('windowsDownloadArm').href = releaseUrl('exif-ai-gui-windows-aarch64.zip');
+    el('linuxDownloadX64').href = releaseUrl('exif-ai-gui-linux-x86_64.tar.gz');
+}
+setDownloadLinks();
+
+// ── Scroll Animations ────────────────────────────────────────
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+        }
+    });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// ── Init ─────────────────────────────────────────────────────
+init();
+</script>
+
+</body>
+</html>
