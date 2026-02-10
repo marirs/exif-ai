@@ -2,14 +2,37 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// Top-level configuration for the exif-ai library.
+///
+/// Controls which AI services to use, which metadata fields to write,
+/// and output behavior (dry run, backups).
+///
+/// # Loading
+///
+/// ```rust,no_run
+/// use exif_ai::config::Config;
+///
+/// // From a JSON file
+/// let config = Config::load(Some("config.json".as_ref())).unwrap();
+///
+/// // Or use defaults and customize
+/// let mut config = Config::default();
+/// config.ai_services.openai.api_key = "sk-...".into();
+/// config.ai_services.openai.enabled = true;
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    /// AI service configurations (OpenAI, Gemini, Cloudflare).
     pub ai_services: AiServices,
+    /// Order in which AI services are tried (failover chain).
     pub service_order: Vec<String>,
+    /// Which metadata fields to write and overwrite behavior.
     pub exif_fields: ExifFields,
+    /// Output behavior (dry run, backups, logging).
     pub output: OutputConfig,
 }
 
+/// Configuration for all available AI services.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiServices {
     pub openai: OpenAiConfig,
@@ -17,6 +40,7 @@ pub struct AiServices {
     pub cloudflare: CloudflareConfig,
 }
 
+/// OpenAI service configuration (GPT-4o-mini, GPT-4o, etc.).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenAiConfig {
     pub api_key: String,
@@ -24,6 +48,7 @@ pub struct OpenAiConfig {
     pub enabled: bool,
 }
 
+/// Google Gemini service configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeminiConfig {
     pub api_key: String,
@@ -31,6 +56,7 @@ pub struct GeminiConfig {
     pub enabled: bool,
 }
 
+/// Cloudflare Workers AI service configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudflareConfig {
     pub account_id: String,
@@ -39,20 +65,49 @@ pub struct CloudflareConfig {
     pub enabled: bool,
 }
 
+/// Controls which metadata fields are written to images.
+///
+/// Each `write_*` flag enables or disables writing that field.
+/// `overwrite_existing` controls whether existing values are replaced.
+///
+/// # Example
+///
+/// ```rust
+/// use exif_ai::config::ExifFields;
+///
+/// let fields = ExifFields {
+///     write_title: true,
+///     write_description: true,
+///     write_tags: true,
+///     write_gps: false,       // don't write GPS
+///     write_subject: false,   // don't write subject
+///     overwrite_existing: false, // preserve existing values
+/// };
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExifFields {
+    /// Write title (ImageDescription + XPTitle + dc:title).
     pub write_title: bool,
+    /// Write description (UserComment + XPComment + dc:description).
     pub write_description: bool,
+    /// Write tags/keywords (XPKeywords + dc:subject + IPTC keywords).
     pub write_tags: bool,
+    /// Write GPS coordinates (only if image has no existing GPS).
     pub write_gps: bool,
+    /// Write subject identification (XPSubject).
     pub write_subject: bool,
+    /// If `true`, overwrite existing metadata values. If `false`, skip fields that already have data.
     pub overwrite_existing: bool,
 }
 
+/// Output and behavior configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutputConfig {
+    /// If `true`, preview what would be written without modifying any files.
     pub dry_run: bool,
+    /// If `true`, create a `.bak` backup before modifying an image.
     pub backup_originals: bool,
+    /// Optional path to a log file.
     pub log_file: Option<String>,
 }
 

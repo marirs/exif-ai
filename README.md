@@ -51,7 +51,7 @@ cargo build --release --target x86_64-pc-windows-msvc
 cargo build --release --target aarch64-pc-windows-msvc
 ```
 
-## Quick Start
+## Quick Start (CLI)
 
 ```bash
 # 1. Generate a default config file
@@ -71,6 +71,112 @@ exif-ai-cli ./photos/
 # 6. Process multiple files with JSON output
 exif-ai-cli --json photo1.jpg photo2.jpg
 ```
+
+## Library Usage
+
+### High-Level (Pipeline)
+
+The simplest way to use the library — handles the full read → AI → write flow:
+
+```rust
+use exif_ai::config::Config;
+use exif_ai::pipeline::{build_service_chain, collect_images, process_image};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Load config (contains API keys, field settings, etc.)
+    let config = Config::load(Some("config.json".as_ref()))?;
+
+    // Build the AI service failover chain
+    let services = build_service_chain(&config);
+
+    // Collect supported images from paths (files or directories, recursive)
+    let images = collect_images(&[PathBuf::from("./photos")]);
+
+    for path in &images {
+        let result = process_image(path, &services, &config).await;
+
+        if let Some(ref err) = result.error {
+            eprintln!("Error: {err}");
+        } else {
+            println!("Processed: {}", path.display());
+            println!("  AI service: {:?}", result.ai_service_used);
+            println!("  Title written: {}", result.title_written);
+
+            // For HEIC/RAW: a sidecar .xmp file is written instead
+            if let Some(ref sidecar) = result.sidecar_path {
+                println!("  Sidecar XMP: {}", sidecar.display());
+            }
+        }
+    }
+
+    Ok(())
+}
+```
+
+### Low-Level (Read / AI / Write separately)
+
+For more control, call each step individually:
+
+```rust
+use exif_ai::exif::{read_exif, write_exif};
+use exif_ai::ai::{OpenAiService, AiService, build_prompt};
+use exif_ai::config::ExifFields;
+use exif_ai::pipeline::ImageKind;
+use std::path::Path;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let path = Path::new("photo.jpg");
+
+    // 1. Read existing EXIF metadata
+    let existing = read_exif(path)?;
+    println!("Camera: {:?} {:?}", existing.make, existing.model);
+
+    // 2. Analyze with AI
+    let service = OpenAiService::new("sk-...".into(), "gpt-4o-mini".into());
+    let bytes = std::fs::read(path)?;
+    let b64 = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD, &bytes,
+    );
+    let ai_result = service.analyze(&b64, &build_prompt(), "image/jpeg").await?;
+    println!("AI title: {:?}", ai_result.title);
+    println!("AI tags: {:?}", ai_result.tags);
+
+    // 3. Write metadata back (format-aware routing)
+    let fields = ExifFields {
+        write_title: true,
+        write_description: true,
+        write_tags: true,
+        write_gps: true,
+        write_subject: true,
+        overwrite_existing: false,
+    };
+    let result = write_exif(path, &ai_result, &existing, &fields, false, ImageKind::Jpeg)?;
+    println!("Title written: {}", result.title_written);
+
+    Ok(())
+}
+```
+
+### Key Types
+
+| Type | Module | Purpose |
+|------|--------|---------|
+| [`Config`](config::Config) | `config` | All settings (API keys, fields, output) |
+| [`ExifFields`](config::ExifFields) | `config` | Which fields to write + overwrite behavior |
+| [`build_service_chain`](pipeline::build_service_chain) | `pipeline` | Create AI service failover chain from config |
+| [`collect_images`](pipeline::collect_images) | `pipeline` | Walk paths, filter by supported extensions |
+| [`process_image`](pipeline::process_image) | `pipeline` | **Main entry point** — read → AI → write |
+| [`ProcessResult`](pipeline::ProcessResult) | `pipeline` | What was written, errors, sidecar path |
+| [`ImageKind`](pipeline::ImageKind) | `pipeline` | Format detection (Jpeg, Png, WebP, Tiff, Sidecar) |
+| [`AiResult`](ai::AiResult) | `ai` | AI output (title, description, tags, gps, subject) |
+| [`AiService`](ai::AiService) | `ai` | Trait for AI backends (implement for custom services) |
+| [`ExifData`](exif::ExifData) | `exif` | Existing metadata read from a file |
+| [`read_exif`](exif::read_exif) | `exif` | Read EXIF from any supported format |
+| [`write_exif`](exif::write_exif) | `exif` | Write metadata (format-aware routing) |
+| [`WriteResult`](exif::WriteResult) | `exif` | Which fields were written + sidecar path |
 
 ## Configuration
 

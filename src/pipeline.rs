@@ -23,7 +23,26 @@ const IMAGE_EXTENSIONS: &[&str] = &[
     "cr3", "cr2", "dng", "nef", "arw", "raf", "orf", "rw2", "pef", "srw",
 ];
 
-/// Determine the write strategy for a given image file.
+/// The write strategy for a given image file, determined by its format.
+///
+/// Different image formats support different metadata embedding approaches:
+/// - **Native** formats (JPEG, PNG, WebP, TIFF) have metadata written directly into the file.
+/// - **Sidecar** formats (HEIC, AVIF, RAW) get a `.xmp` sidecar file written alongside the original.
+///
+/// Use [`ImageKind::from_path`] to detect the format from a file extension.
+///
+/// # Example
+///
+/// ```rust
+/// use exif_ai::pipeline::ImageKind;
+/// use std::path::Path;
+///
+/// let kind = ImageKind::from_path(Path::new("photo.heic"));
+/// assert_eq!(kind, Some(ImageKind::Sidecar));
+///
+/// let kind = ImageKind::from_path(Path::new("photo.jpg"));
+/// assert_eq!(kind, Some(ImageKind::Jpeg));
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ImageKind {
     /// JPEG — full EXIF+XMP+IPTC write support
@@ -83,7 +102,30 @@ impl ImageKind {
     }
 }
 
-/// Result of processing a single image.
+/// The result of processing a single image through the AI pipeline.
+///
+/// Contains the AI analysis output, which metadata fields were written,
+/// any errors encountered, and the sidecar path for HEIC/RAW formats.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// # use exif_ai::pipeline::{process_image, build_service_chain, ProcessResult};
+/// # use exif_ai::config::Config;
+/// # async fn example() {
+/// # let config = Config::default();
+/// # let services = build_service_chain(&config);
+/// let result = process_image("photo.jpg".as_ref(), &services, &config).await;
+///
+/// if result.error.is_none() {
+///     println!("Title written: {}", result.title_written);
+///     println!("AI service: {:?}", result.ai_service_used);
+///     if let Some(ref sidecar) = result.sidecar_path {
+///         println!("Sidecar: {}", sidecar.display());
+///     }
+/// }
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct ProcessResult {
     pub path: PathBuf,
@@ -103,7 +145,24 @@ pub struct ProcessResult {
     pub image_kind: Option<ImageKind>,
 }
 
-/// Collect image files from the given paths (files or directories).
+/// Collect supported image files from the given paths.
+///
+/// Accepts a mix of file paths and directory paths. Directories are walked
+/// recursively (following symlinks). Only files with supported image extensions
+/// are included (see [`ImageKind`] for the full list).
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use exif_ai::pipeline::collect_images;
+/// use std::path::PathBuf;
+///
+/// let images = collect_images(&[
+///     PathBuf::from("photo.jpg"),       // single file
+///     PathBuf::from("./photos/"),        // entire directory
+/// ]);
+/// println!("Found {} images", images.len());
+/// ```
 pub fn collect_images(paths: &[PathBuf]) -> Vec<PathBuf> {
     let mut images = Vec::new();
 
@@ -156,7 +215,22 @@ fn backup_file(path: &Path) -> Result<PathBuf> {
     Ok(backup_path)
 }
 
-/// Build the AI service chain from config.
+/// Build the AI service failover chain from configuration.
+///
+/// Creates a list of AI service instances based on the `service_order` and
+/// enabled flags in the config. Services are tried in order during
+/// [`process_image`] — if one fails, the next is attempted.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use exif_ai::config::Config;
+/// use exif_ai::pipeline::build_service_chain;
+///
+/// let config = Config::load(Some("config.json".as_ref())).unwrap();
+/// let services = build_service_chain(&config);
+/// println!("Configured {} AI services", services.len());
+/// ```
 pub fn build_service_chain(config: &Config) -> Vec<Box<dyn AiService>> {
     let mut services: Vec<Box<dyn AiService>> = Vec::new();
 
@@ -202,7 +276,48 @@ pub fn build_service_chain(config: &Config) -> Vec<Box<dyn AiService>> {
     services
 }
 
-/// Process a single image through the AI pipeline and write EXIF.
+/// Process a single image through the full AI pipeline.
+///
+/// This is the main entry point for the library. It performs the complete flow:
+///
+/// 1. **Read** — Extracts existing EXIF metadata from the image
+/// 2. **Analyze** — Sends the image to AI services (with failover) for analysis
+/// 3. **Write** — Writes AI-generated metadata back to the file (format-aware)
+///
+/// For JPEG, PNG, WebP, and TIFF files, metadata is written directly into the file.
+/// For HEIC, AVIF, and RAW formats, a sidecar `.xmp` file is created alongside
+/// the original (the original file is never modified).
+///
+/// # Arguments
+///
+/// * `path` — Path to the image file
+/// * `services` — AI service chain from [`build_service_chain`]
+/// * `config` — Configuration (controls which fields to write, dry run, backups, etc.)
+///
+/// # Returns
+///
+/// A [`ProcessResult`] containing the AI output, which fields were written,
+/// any errors, and the sidecar path (if applicable).
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use exif_ai::config::Config;
+/// use exif_ai::pipeline::{build_service_chain, process_image};
+/// use std::path::Path;
+///
+/// # async fn example() -> anyhow::Result<()> {
+/// let config = Config::load(Some("config.json".as_ref()))?;
+/// let services = build_service_chain(&config);
+///
+/// let result = process_image(Path::new("photo.heic"), &services, &config).await;
+/// if let Some(ref ai) = result.ai_result {
+///     println!("Title: {:?}", ai.title);
+///     println!("Tags: {:?}", ai.tags);
+/// }
+/// # Ok(())
+/// # }
+/// ```
 pub async fn process_image(
     path: &Path,
     services: &[Box<dyn AiService>],

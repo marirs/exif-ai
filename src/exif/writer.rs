@@ -28,14 +28,24 @@ const TAG_GPS_LONGITUDE: u16 = 0x0004;
 // img-parts set_exif() expects just the TIFF data (after Exif\0\0)
 const JPEG_EXIF_OVERHEAD: usize = 10; // 2 + 2 + 6
 
-/// Result of writing EXIF data to an image.
+/// Result of writing metadata to an image file.
+///
+/// Indicates which fields were successfully written, which were skipped
+/// (e.g., because the field already existed and `overwrite_existing` is `false`),
+/// and the sidecar path for HEIC/RAW formats.
 #[derive(Debug, Default)]
 pub struct WriteResult {
+    /// Whether a title was written (ImageDescription + XPTitle).
     pub title_written: bool,
+    /// Whether a description was written (UserComment + XPComment).
     pub description_written: bool,
+    /// Whether tags/keywords were written (XPKeywords).
     pub tags_written: bool,
+    /// Whether GPS coordinates were written.
     pub gps_written: bool,
+    /// Whether subject identification was written (XPSubject).
     pub subject_written: bool,
+    /// Fields that were skipped (with reason), e.g. `"title (existing)"`.
     pub skipped_fields: Vec<String>,
     /// Path to sidecar XMP file if one was written (for HEIC/RAW formats).
     pub sidecar_path: Option<PathBuf>,
@@ -112,13 +122,62 @@ fn load_existing_metadata(path: &Path) -> Option<Metadata> {
     }
 }
 
-/// Write AI-generated metadata into the image EXIF, preserving all existing data.
+/// Write AI-generated metadata into an image file, preserving all existing data.
 ///
-/// Strategy:
-/// 1. Read the entire JPEG with img-parts (preserves all segments)
-/// 2. Try to load existing EXIF with little_exif and merge AI tags
-/// 3. If little_exif can't parse, inject AI tags into the raw EXIF via img-parts
-/// 4. Write back via img-parts (only APP1 EXIF segment changes)
+/// This is the format-aware metadata writer. It routes to the correct strategy
+/// based on [`ImageKind`]:
+///
+/// | ImageKind | Strategy |
+/// |-----------|----------|
+/// | `Jpeg` | EXIF (APP1) + XMP (APP1) + IPTC (APP13) — all written in-place |
+/// | `Png` | XMP in iTXt chunk |
+/// | `WebP` | EXIF + XMP in RIFF chunks |
+/// | `Tiff` | EXIF via little_exif |
+/// | `Sidecar` | Writes a `.xmp` sidecar file alongside the original (HEIC/RAW) |
+///
+/// # Arguments
+///
+/// * `path` — Path to the image file
+/// * `ai_result` — AI-generated metadata to write
+/// * `existing` — Existing EXIF data (used to check for duplicates)
+/// * `fields` — Which fields to write and whether to overwrite existing values
+/// * `dry_run` — If `true`, compute what would be written but don't modify any files
+/// * `image_kind` — The format of the image (determines write strategy)
+///
+/// # Returns
+///
+/// A [`WriteResult`] indicating which fields were written and any sidecar path.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use exif_ai::exif::{read_exif, write_exif, WriteResult};
+/// use exif_ai::ai::AiResult;
+/// use exif_ai::config::ExifFields;
+/// use exif_ai::pipeline::ImageKind;
+/// use std::path::Path;
+///
+/// let path = Path::new("photo.jpg");
+/// let existing = read_exif(path).unwrap();
+/// let ai = AiResult {
+///     title: Some("Sunset over the ocean".into()),
+///     description: Some("A vibrant sunset paints the sky orange and pink".into()),
+///     tags: Some(vec!["sunset".into(), "ocean".into(), "sky".into()]),
+///     ..Default::default()
+/// };
+/// let fields = ExifFields {
+///     write_title: true,
+///     write_description: true,
+///     write_tags: true,
+///     write_gps: false,
+///     write_subject: false,
+///     overwrite_existing: false,
+/// };
+///
+/// let result = write_exif(path, &ai, &existing, &fields, false, ImageKind::Jpeg)?;
+/// assert!(result.title_written);
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 pub fn write_exif(
     path: &Path,
     ai_result: &AiResult,

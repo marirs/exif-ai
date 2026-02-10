@@ -9,7 +9,19 @@ pub use cloudflare::CloudflareService;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-/// The structured data returned by AI vision analysis.
+/// Structured metadata returned by AI vision analysis.
+///
+/// Each field is `Option` because the AI may not be able to determine all fields
+/// for every image. Fields set to `None` or `null` by the AI are skipped during
+/// the metadata write phase.
+///
+/// # Fields
+///
+/// - `title` — SEO-optimized title (max 60 chars)
+/// - `description` — Descriptive caption (max 254 chars)
+/// - `tags` — 5–10 SEO keywords
+/// - `gps` — GPS coordinates if a known location is identified
+/// - `subject` — Identified people, species, landmarks
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AiResult {
     pub title: Option<String>,
@@ -19,6 +31,10 @@ pub struct AiResult {
     pub subject: Option<Vec<String>>,
 }
 
+/// GPS coordinates identified by the AI for a known location.
+///
+/// Only populated when the AI recognizes a specific, real-world location
+/// in the image (e.g., Eiffel Tower, Golden Gate Bridge).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GpsCoords {
     pub latitude: f64,
@@ -26,13 +42,42 @@ pub struct GpsCoords {
 }
 
 /// Trait for AI vision services.
+///
+/// Implement this trait to add a custom AI backend. The library ships with
+/// three implementations: [`OpenAiService`], [`GeminiService`], and
+/// [`CloudflareService`].
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use exif_ai::ai::{AiService, AiResult, OpenAiService};
+///
+/// # async fn example() -> anyhow::Result<()> {
+/// let service = OpenAiService::new("sk-...".into(), "gpt-4o-mini".into());
+/// let result = service.analyze("base64data", "prompt", "image/jpeg").await?;
+/// println!("Title: {:?}", result.title);
+/// # Ok(())
+/// # }
+/// ```
 #[async_trait::async_trait]
 pub trait AiService: Send + Sync {
+    /// The display name of this service (e.g., "OpenAI", "Gemini").
     fn name(&self) -> &str;
+    /// Analyze a base64-encoded image and return structured metadata.
+    ///
+    /// * `image_base64` — The image bytes encoded as base64
+    /// * `prompt` — The analysis prompt (use [`build_prompt`] for the default)
+    /// * `mime_type` — The MIME type of the image (e.g., `"image/jpeg"`, `"image/heic"`)
     async fn analyze(&self, image_base64: &str, prompt: &str, mime_type: &str) -> Result<AiResult>;
 }
 
-/// Build the AI prompt that asks for structured JSON output.
+/// Build the default AI prompt that asks for structured JSON output.
+///
+/// Returns the prompt string used to instruct the AI model to return
+/// a JSON object with `title`, `description`, `tags`, `gps`, and `subject` fields.
+///
+/// You can use this directly or provide your own custom prompt to
+/// [`AiService::analyze`].
 pub fn build_prompt() -> String {
     r#"Analyze this image and return a JSON object with the following fields:
 
@@ -55,7 +100,11 @@ Return ONLY the JSON object, no markdown formatting, no code blocks, no extra te
         .to_string()
 }
 
-/// Parse the AI response text into an AiResult.
+/// Parse raw AI response text into an [`AiResult`].
+///
+/// Handles common AI quirks: markdown code fences, trailing commas,
+/// and multiple JSON candidates in the response. Tries several extraction
+/// strategies before failing.
 pub fn parse_ai_response(text: &str) -> Result<AiResult> {
     log::debug!("Raw AI response:\n{text}");
 

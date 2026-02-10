@@ -8,7 +8,24 @@ const TAG_XP_COMMENT: u16 = 0x9C9C;
 const TAG_XP_KEYWORDS: u16 = 0x9C9E;
 const TAG_XP_SUBJECT: u16 = 0x9C9F;
 
-/// Existing EXIF data extracted from an image.
+/// Existing EXIF metadata extracted from an image file.
+///
+/// Populated by [`read_exif`]. Contains both AI-relevant fields (title, description,
+/// keywords, GPS) and standard camera metadata (make, model, exposure, etc.).
+///
+/// All fields are `Option<String>` — missing tags are `None`.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use exif_ai::exif::read_exif;
+/// use std::path::Path;
+///
+/// let data = read_exif(Path::new("photo.jpg")).unwrap();
+/// println!("Camera: {:?} {:?}", data.make, data.model);
+/// println!("Has GPS: {}", data.has_gps);
+/// println!("Existing title: {:?}", data.title);
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct ExifData {
     pub title: Option<String>,
@@ -37,7 +54,30 @@ pub struct ExifData {
     pub lens_model: Option<String>,
 }
 
-/// Read existing EXIF data from an image file.
+/// Read existing EXIF metadata from an image file.
+///
+/// Uses `nom-exif` under the hood, which supports JPEG, TIFF, HEIC/HEIF, AVIF,
+/// and many RAW formats (CR2, CR3, DNG, NEF, ARW, RAF, etc.).
+///
+/// Returns [`ExifData::default()`] (all fields `None`) if no EXIF data is found,
+/// rather than returning an error.
+///
+/// # Arguments
+///
+/// * `path` — Path to the image file
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use exif_ai::exif::read_exif;
+/// use std::path::Path;
+///
+/// let data = read_exif(Path::new("photo.heic"))?;
+/// if data.has_gps {
+///     println!("GPS: {}, {}", data.gps_latitude.unwrap(), data.gps_longitude.unwrap());
+/// }
+/// # Ok::<(), anyhow::Error>(())
+/// ```
 pub fn read_exif(path: &Path) -> Result<ExifData> {
     let mut parser = MediaParser::new();
     let ms = MediaSource::file_path(path).context("Failed to open image file")?;
