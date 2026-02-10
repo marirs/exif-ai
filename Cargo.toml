@@ -19,9 +19,15 @@ name = "exif-ai-cli"
 path = "src/cli/main.rs"
 required-features = ["cli"]
 
+[[bin]]
+name = "exif-ai-gui"
+path = "src/gui/main.rs"
+required-features = ["gui"]
+
 [features]
 default = ["cli"]
 cli = ["clap", "env_logger"]
+gui = ["eframe", "egui_extras", "rfd", "env_logger"]
 
 [dependencies]
 # CLI (optional — only needed for the binary)
@@ -67,6 +73,11 @@ hf-hub = { version = "0.4", default-features = false, features = ["tokio", "rust
 
 # File walking
 walkdir = "2"
+
+# GUI (optional — only needed for the desktop app)
+eframe = { version = "0.33", optional = true, default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+egui_extras = { version = "0.33", optional = true, features = ["image"] }
+rfd = { version = "0.17", optional = true }
 
 # macOS: use Accelerate (BLAS) + Metal (GPU) for fast Apple Silicon inference
 [target.'cfg(target_os = "macos")'.dependencies]
