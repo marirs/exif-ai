@@ -269,6 +269,30 @@ pub fn build_service_chain(config: &Config) -> Vec<Box<dyn AiService>> {
                     config.ai_services.cloudflare.model.clone(),
                 )));
             }
+            "local" if config.ai_services.local.enabled => {
+                let local_service = if config.ai_services.local.model_path.is_empty() {
+                    match ai::LocalService::from_default_dir() {
+                        Ok(s) => s,
+                        Err(e) => {
+                            log::warn!("Local service: failed to resolve model directory: {e}");
+                            continue;
+                        }
+                    }
+                } else {
+                    let dir = std::path::PathBuf::from(&config.ai_services.local.model_path);
+                    ai::LocalService::new(
+                        dir.join("model.safetensors"),
+                        dir.join("tokenizer.json"),
+                    )
+                };
+                if !local_service.model_exists() {
+                    log::warn!(
+                        "Local model not found. Run `exif-ai-cli --download-model` to download it. Skipping local service."
+                    );
+                    continue;
+                }
+                services.push(Box::new(local_service));
+            }
             _ => {}
         }
     }
@@ -371,7 +395,16 @@ pub async fn process_image(
     let mut errors = Vec::new();
     for service in services {
         log::info!("  Trying {}...", service.name());
-        match service.analyze(&image_base64, &prompt, mime_type).await {
+
+        // Use file-based analysis for services that support it (e.g. local BLIP),
+        // otherwise fall back to base64 analysis.
+        let ai_response = if service.supports_file_analysis() {
+            service.analyze_file(path)
+        } else {
+            service.analyze(&image_base64, &prompt, mime_type).await
+        };
+
+        match ai_response {
             Ok(ai_data) => {
                 if ai_data.title.is_some() || ai_data.description.is_some() {
                     result.ai_result = Some(ai_data);

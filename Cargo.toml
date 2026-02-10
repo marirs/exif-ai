@@ -38,7 +38,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Image handling
-image = "0.25"
+image = { version = "0.25", features = ["jpeg", "png", "webp"] }
 base64 = "0.22"
 
 # EXIF read
@@ -58,8 +58,20 @@ anyhow = "1"
 # Async trait
 async-trait = "0.1"
 
+# Local AI model (BLIP image captioning)
+candle-core = "0.8"
+candle-nn = "0.8"
+candle-transformers = "0.8"
+tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
+hf-hub = { version = "0.4", features = ["tokio"] }
+
 # File walking
 walkdir = "2"
+
+# macOS: use Accelerate (BLAS) + Metal (GPU) for fast Apple Silicon inference
+[target.'cfg(target_os = "macos")'.dependencies]
+accelerate-src = "0.3"
+candle-core = { version = "0.8", features = ["accelerate", "metal"] }
 
 [dev-dependencies]
 tempfile = "3"

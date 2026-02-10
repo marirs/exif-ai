@@ -1,10 +1,12 @@
 mod openai;
 mod gemini;
 mod cloudflare;
+pub mod local;
 
 pub use openai::OpenAiService;
 pub use gemini::GeminiService;
 pub use cloudflare::CloudflareService;
+pub use local::LocalService;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -69,6 +71,18 @@ pub trait AiService: Send + Sync {
     /// * `prompt` — The analysis prompt (use [`build_prompt`] for the default)
     /// * `mime_type` — The MIME type of the image (e.g., `"image/jpeg"`, `"image/heic"`)
     async fn analyze(&self, image_base64: &str, prompt: &str, mime_type: &str) -> Result<AiResult>;
+
+    /// Whether this service supports direct file-based analysis.
+    fn supports_file_analysis(&self) -> bool {
+        false
+    }
+
+    /// Analyze an image file directly (for local models that don't need base64).
+    ///
+    /// Returns `Err` by default. Override in services that support file-based analysis.
+    fn analyze_file(&self, _path: &std::path::Path) -> Result<AiResult> {
+        anyhow::bail!("File-based analysis not supported by {}", self.name())
+    }
 }
 
 /// Build the default AI prompt that asks for structured JSON output.

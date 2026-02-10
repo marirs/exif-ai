@@ -12,7 +12,8 @@ AI-powered EXIF metadata writer — generate SEO titles, descriptions, tags, GPS
 ## Features
 
 - **AI Vision Analysis** — Send images to AI models for intelligent metadata generation
-- **Multi-Service Failover** — Configurable chain: OpenAI GPT-4o-mini → Google Gemini → Cloudflare Workers AI
+- **Local AI (Offline)** — Run a quantized BLIP model on-device — no API keys, no network, fully private
+- **Multi-Service Failover** — Configurable chain: Local BLIP → OpenAI GPT-4o-mini → Google Gemini → Cloudflare Workers AI
 - **Multi-Format Support** — JPEG, PNG, WebP, TIFF (native write), HEIC/HEIF, AVIF, and 10+ RAW formats (sidecar XMP)
 - **EXIF Writing** — Writes title, description, tags, GPS coordinates, and subject identification directly into image EXIF data
 - **GPS Intelligence** — Only writes GPS coordinates when the image has no existing GPS data AND the AI identifies a known location
@@ -22,6 +23,7 @@ AI-powered EXIF metadata writer — generate SEO titles, descriptions, tags, GPS
 - **Dry Run Mode** — Preview what would be written without modifying any files
 - **JSON Output** — Machine-readable output for scripting and automation
 - **Cross-Platform** — Builds for macOS (Silicon & Intel) and Windows (ARM & Intel)
+- **Show & Clear EXIF** — Inspect or strip all EXIF/XMP/IPTC metadata from images
 
 ## Installation
 
@@ -77,6 +79,11 @@ exif-ai-cli ./photos/
 
 # 6. Process multiple files with JSON output
 exif-ai-cli --json photo1.jpg photo2.jpg
+
+# 7. (Optional) Use local AI — no API keys needed
+exif-ai-cli --download-model          # one-time ~1.75 GB download
+# Then set "local.enabled": true in config.json
+exif-ai-cli photo.jpg                  # uses local BLIP model
 ```
 
 ## Library Usage
@@ -207,9 +214,13 @@ Run `exif-ai-cli --init` to generate a default `config.json` in the same directo
       "api_token": "",
       "model": "@cf/llava-hf/llava-1.5-7b-hf",
       "enabled": false
+    },
+    "local": {
+      "model_path": "",
+      "enabled": false
     }
   },
-  "service_order": ["openai", "gemini", "cloudflare"],
+  "service_order": ["local", "openai", "gemini", "cloudflare"],
   "exif_fields": {
     "write_title": true,
     "write_description": true,
@@ -230,11 +241,14 @@ Run `exif-ai-cli --init` to generate a default `config.json` in the same directo
 
 Configure one or more AI services. The `service_order` array determines the failover chain — if the first service fails or returns empty results, the next one is tried.
 
+The local service is first in the default chain but disabled by default. If the model is missing when enabled, a warning is logged and the next service in the chain is tried.
+
 | Service | Pricing | Notes |
 |---------|---------|-------|
 | **OpenAI** (GPT-4o-mini) | ~$0.001/image | Highest quality results |
 | **Google Gemini** | Free tier: 15 req/min, 1,500/day | Great balance of quality and cost |
 | **Cloudflare Workers AI** (LLaVA) | Free tier: ~100-200 images/day | Free but lower quality |
+| **Local BLIP** (on-device) | Free forever | ~5s/image on CPU, no network needed |
 
 ### Metadata Written (Cross-Platform)
 
@@ -294,6 +308,7 @@ Options:
   -v, --verbose        Verbose output
       --show-exif      Display all EXIF metadata and exit
       --clear-exif     Clear all EXIF/XMP/IPTC metadata from the image(s)
+      --download-model Download the local BLIP model for offline inference
   -h, --help           Print help
   -V, --version        Print version
 ```

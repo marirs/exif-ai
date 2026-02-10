@@ -42,6 +42,10 @@ struct Cli {
     /// Clear all EXIF/XMP/IPTC metadata from the image(s)
     #[arg(long = "clear-exif")]
     clear_exif: bool,
+
+    /// Download the local BLIP model for offline inference
+    #[arg(long = "download-model")]
+    download_model: bool,
 }
 
 #[tokio::main]
@@ -53,6 +57,21 @@ async fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level))
         .format_timestamp(None)
         .init();
+
+    // Handle --download-model
+    if cli.download_model {
+        let config = config::Config::load(cli.config.as_deref())?;
+        let model_dir = if config.ai_services.local.model_path.is_empty() {
+            None
+        } else {
+            Some(std::path::Path::new(&config.ai_services.local.model_path))
+        };
+        println!("Downloading BLIP model...");
+        let dir = exif_ai::ai::local::download_model(model_dir).await?;
+        println!("Model downloaded to: {}", dir.display());
+        println!("\nTo enable local inference, set \"local.enabled\": true in your config.json");
+        return Ok(());
+    }
 
     // Handle --init
     if cli.init {

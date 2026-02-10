@@ -168,6 +168,19 @@ pub fn read_exif(path: &Path) -> Result<ExifData> {
         format_rational_decimal(v).map(|s| format!("{s} dpi"))
     });
 
+    // Normalize: treat empty/whitespace-only metadata strings as None
+    fn normalize(opt: &mut Option<String>) {
+        if let Some(s) = opt.as_ref() {
+            if s.trim().is_empty() || s.chars().all(|c| c == '\0' || c.is_whitespace()) {
+                *opt = None;
+            }
+        }
+    }
+    normalize(&mut data.title);
+    normalize(&mut data.description);
+    normalize(&mut data.keywords);
+    normalize(&mut data.subject);
+
     // GPS — use nom-exif's built-in GPS parser
     if let Some(gps) = gps_info {
         data.has_gps = true;

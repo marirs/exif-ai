@@ -38,6 +38,8 @@ pub struct AiServices {
     pub openai: OpenAiConfig,
     pub gemini: GeminiConfig,
     pub cloudflare: CloudflareConfig,
+    #[serde(default)]
+    pub local: LocalConfig,
 }
 
 /// OpenAI service configuration (GPT-4o-mini, GPT-4o, etc.).
@@ -63,6 +65,27 @@ pub struct CloudflareConfig {
     pub api_token: String,
     pub model: String,
     pub enabled: bool,
+}
+
+/// Local BLIP model configuration.
+///
+/// When enabled, runs a quantized BLIP image-captioning model on-device.
+/// No API keys or network access required after the initial model download.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalConfig {
+    /// Path to the directory containing the model and tokenizer files.
+    /// If empty, uses the default cache directory (~/.cache/exif-ai or platform equivalent).
+    pub model_path: String,
+    pub enabled: bool,
+}
+
+impl Default for LocalConfig {
+    fn default() -> Self {
+        Self {
+            model_path: String::new(),
+            enabled: false,
+        }
+    }
 }
 
 /// Controls which metadata fields are written to images.
@@ -131,8 +154,10 @@ impl Default for Config {
                     model: "@cf/llava-hf/llava-1.5-7b-hf".to_string(),
                     enabled: false,
                 },
+                local: LocalConfig::default(),
             },
             service_order: vec![
+                "local".to_string(),
                 "openai".to_string(),
                 "gemini".to_string(),
                 "cloudflare".to_string(),
@@ -207,6 +232,7 @@ impl Config {
                 "openai" => self.ai_services.openai.enabled,
                 "gemini" => self.ai_services.gemini.enabled,
                 "cloudflare" => self.ai_services.cloudflare.enabled,
+                "local" => self.ai_services.local.enabled,
                 _ => false,
             })
             .cloned()
@@ -229,7 +255,9 @@ mod tests {
         assert!(!config.ai_services.cloudflare.enabled);
         assert!(config.ai_services.openai.api_key.is_empty());
         assert_eq!(config.ai_services.openai.model, "gpt-4o-mini");
-        assert_eq!(config.service_order, vec!["openai", "gemini", "cloudflare"]);
+        assert!(!config.ai_services.local.enabled);
+        assert!(config.ai_services.local.model_path.is_empty());
+        assert_eq!(config.service_order, vec!["local", "openai", "gemini", "cloudflare"]);
     }
 
     #[test]
