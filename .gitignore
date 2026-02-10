@@ -16,3 +16,8 @@ config.json
 *.png
 *.gif
 *.hiec
+*.hief
+*.tiff
+*.raw
+*.dng
+*.webp
