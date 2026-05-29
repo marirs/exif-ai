@@ -4,22 +4,17 @@ use walkdir::WalkDir;
 
 use crate::ai::{self, AiResult, AiService};
 use crate::config::{Config, ExifFields};
-use crate::exif::{self, ExifData};
 use crate::exif::write_exif;
+use crate::exif::{self, ExifData};
 
 /// Supported image extensions.
 const IMAGE_EXTENSIONS: &[&str] = &[
     // Native write support (EXIF+XMP+IPTC)
-    "jpg", "jpeg",
-    // Native write support (XMP)
-    "png", "webp",
-    // Native write support (EXIF)
-    "tif", "tiff",
-    // HEIC/HEIF — read EXIF, sidecar XMP write
-    "heic", "heif",
-    // AVIF — read EXIF, sidecar XMP write
-    "avif",
-    // RAW formats — read EXIF, sidecar XMP write
+    "jpg", "jpeg", // Native write support (XMP)
+    "png", "webp", // Native write support (EXIF)
+    "tif", "tiff", // HEIC/HEIF — read EXIF, sidecar XMP write
+    "heic", "heif", // AVIF — read EXIF, sidecar XMP write
+    "avif", // RAW formats — read EXIF, sidecar XMP write
     "cr3", "cr2", "dng", "nef", "arw", "raf", "orf", "rw2", "pef", "srw",
 ];
 
@@ -66,16 +61,16 @@ impl ImageKind {
             "png" => Some(Self::Png),
             "webp" => Some(Self::WebP),
             "tif" | "tiff" => Some(Self::Tiff),
-            "heic" | "heif" | "avif"
-            | "cr3" | "cr2" | "dng" | "nef" | "arw" | "raf" | "orf" | "rw2" | "pef" | "srw"
-                => Some(Self::Sidecar),
+            "heic" | "heif" | "avif" | "cr3" | "cr2" | "dng" | "nef" | "arw" | "raf" | "orf"
+            | "rw2" | "pef" | "srw" => Some(Self::Sidecar),
             _ => None,
         }
     }
 
     /// Get the MIME type for sending to AI services.
     pub fn mime_type(&self, path: &Path) -> &'static str {
-        let ext = path.extension()
+        let ext = path
+            .extension()
             .and_then(|e| e.to_str())
             .map(|e| e.to_lowercase())
             .unwrap_or_default();
@@ -212,12 +207,11 @@ impl Pipeline {
                 return result;
             }
         };
-        let image_base64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_bytes);
+        let image_base64 =
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_bytes);
 
         // Determine MIME type for AI service
-        let mime_type = kind
-            .map(|k| k.mime_type(path))
-            .unwrap_or("image/jpeg");
+        let mime_type = kind.map(|k| k.mime_type(path)).unwrap_or("image/jpeg");
 
         // Build prompt
         let prompt = ai::build_prompt();
@@ -254,10 +248,7 @@ impl Pipeline {
         }
 
         if result.ai_result.is_none() {
-            result.error = Some(format!(
-                "All AI services failed: {}",
-                errors.join("; ")
-            ));
+            result.error = Some(format!("All AI services failed: {}", errors.join("; ")));
             return result;
         }
 
@@ -612,7 +603,6 @@ fn backup_file(path: &Path) -> Result<PathBuf> {
     Ok(backup_path)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -623,43 +613,81 @@ mod tests {
 
     #[test]
     fn image_kind_jpeg() {
-        assert_eq!(ImageKind::from_path(Path::new("photo.jpg")), Some(ImageKind::Jpeg));
-        assert_eq!(ImageKind::from_path(Path::new("photo.jpeg")), Some(ImageKind::Jpeg));
-        assert_eq!(ImageKind::from_path(Path::new("PHOTO.JPG")), Some(ImageKind::Jpeg));
+        assert_eq!(
+            ImageKind::from_path(Path::new("photo.jpg")),
+            Some(ImageKind::Jpeg)
+        );
+        assert_eq!(
+            ImageKind::from_path(Path::new("photo.jpeg")),
+            Some(ImageKind::Jpeg)
+        );
+        assert_eq!(
+            ImageKind::from_path(Path::new("PHOTO.JPG")),
+            Some(ImageKind::Jpeg)
+        );
     }
 
     #[test]
     fn image_kind_png() {
-        assert_eq!(ImageKind::from_path(Path::new("image.png")), Some(ImageKind::Png));
-        assert_eq!(ImageKind::from_path(Path::new("IMAGE.PNG")), Some(ImageKind::Png));
+        assert_eq!(
+            ImageKind::from_path(Path::new("image.png")),
+            Some(ImageKind::Png)
+        );
+        assert_eq!(
+            ImageKind::from_path(Path::new("IMAGE.PNG")),
+            Some(ImageKind::Png)
+        );
     }
 
     #[test]
     fn image_kind_webp() {
-        assert_eq!(ImageKind::from_path(Path::new("image.webp")), Some(ImageKind::WebP));
+        assert_eq!(
+            ImageKind::from_path(Path::new("image.webp")),
+            Some(ImageKind::WebP)
+        );
     }
 
     #[test]
     fn image_kind_tiff() {
-        assert_eq!(ImageKind::from_path(Path::new("scan.tif")), Some(ImageKind::Tiff));
-        assert_eq!(ImageKind::from_path(Path::new("scan.tiff")), Some(ImageKind::Tiff));
+        assert_eq!(
+            ImageKind::from_path(Path::new("scan.tif")),
+            Some(ImageKind::Tiff)
+        );
+        assert_eq!(
+            ImageKind::from_path(Path::new("scan.tiff")),
+            Some(ImageKind::Tiff)
+        );
     }
 
     #[test]
     fn image_kind_sidecar_heic() {
-        assert_eq!(ImageKind::from_path(Path::new("photo.heic")), Some(ImageKind::Sidecar));
-        assert_eq!(ImageKind::from_path(Path::new("photo.heif")), Some(ImageKind::Sidecar));
-        assert_eq!(ImageKind::from_path(Path::new("photo.HEIC")), Some(ImageKind::Sidecar));
+        assert_eq!(
+            ImageKind::from_path(Path::new("photo.heic")),
+            Some(ImageKind::Sidecar)
+        );
+        assert_eq!(
+            ImageKind::from_path(Path::new("photo.heif")),
+            Some(ImageKind::Sidecar)
+        );
+        assert_eq!(
+            ImageKind::from_path(Path::new("photo.HEIC")),
+            Some(ImageKind::Sidecar)
+        );
     }
 
     #[test]
     fn image_kind_sidecar_avif() {
-        assert_eq!(ImageKind::from_path(Path::new("photo.avif")), Some(ImageKind::Sidecar));
+        assert_eq!(
+            ImageKind::from_path(Path::new("photo.avif")),
+            Some(ImageKind::Sidecar)
+        );
     }
 
     #[test]
     fn image_kind_sidecar_raw() {
-        for ext in &["cr3", "cr2", "dng", "nef", "arw", "raf", "orf", "rw2", "pef", "srw"] {
+        for ext in &[
+            "cr3", "cr2", "dng", "nef", "arw", "raf", "orf", "rw2", "pef", "srw",
+        ] {
             let path = format!("photo.{ext}");
             assert_eq!(
                 ImageKind::from_path(Path::new(&path)),
@@ -697,16 +725,34 @@ mod tests {
 
     #[test]
     fn mime_type_heic() {
-        assert_eq!(ImageKind::Sidecar.mime_type(Path::new("a.heic")), "image/heic");
-        assert_eq!(ImageKind::Sidecar.mime_type(Path::new("a.heif")), "image/heif");
+        assert_eq!(
+            ImageKind::Sidecar.mime_type(Path::new("a.heic")),
+            "image/heic"
+        );
+        assert_eq!(
+            ImageKind::Sidecar.mime_type(Path::new("a.heif")),
+            "image/heif"
+        );
     }
 
     #[test]
     fn mime_type_raw_formats() {
-        assert_eq!(ImageKind::Sidecar.mime_type(Path::new("a.cr3")), "image/x-canon-cr3");
-        assert_eq!(ImageKind::Sidecar.mime_type(Path::new("a.nef")), "image/x-nikon-nef");
-        assert_eq!(ImageKind::Sidecar.mime_type(Path::new("a.arw")), "image/x-sony-arw");
-        assert_eq!(ImageKind::Sidecar.mime_type(Path::new("a.dng")), "image/x-adobe-dng");
+        assert_eq!(
+            ImageKind::Sidecar.mime_type(Path::new("a.cr3")),
+            "image/x-canon-cr3"
+        );
+        assert_eq!(
+            ImageKind::Sidecar.mime_type(Path::new("a.nef")),
+            "image/x-nikon-nef"
+        );
+        assert_eq!(
+            ImageKind::Sidecar.mime_type(Path::new("a.arw")),
+            "image/x-sony-arw"
+        );
+        assert_eq!(
+            ImageKind::Sidecar.mime_type(Path::new("a.dng")),
+            "image/x-adobe-dng"
+        );
     }
 
     #[test]
@@ -845,7 +891,10 @@ mod tests {
     #[test]
     fn builder_manual_service() {
         let pipeline = Pipeline::builder()
-            .add_service(Box::new(ai::OpenAiService::new("sk-test".into(), "gpt-4o-mini".into())))
+            .add_service(Box::new(ai::OpenAiService::new(
+                "sk-test".into(),
+                "gpt-4o-mini".into(),
+            )))
             .build()
             .unwrap();
         assert_eq!(pipeline.service_count(), 1);

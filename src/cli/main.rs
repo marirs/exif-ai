@@ -112,12 +112,10 @@ async fn main() -> Result<()> {
         for image_path in &images {
             let kind = pipeline::ImageKind::from_path(image_path);
             match kind {
-                Some(k) => {
-                    match exif::clear_exif(image_path, k) {
-                        Ok(()) => log::info!("Cleared EXIF: {}", image_path.display()),
-                        Err(e) => log::error!("Failed to clear {}: {e}", image_path.display()),
-                    }
-                }
+                Some(k) => match exif::clear_exif(image_path, k) {
+                    Ok(()) => log::info!("Cleared EXIF: {}", image_path.display()),
+                    Err(e) => log::error!("Failed to clear {}: {e}", image_path.display()),
+                },
                 None => log::warn!("Unsupported format: {}", image_path.display()),
             }
         }
@@ -152,22 +150,14 @@ async fn main() -> Result<()> {
         }
     };
 
-    log::info!(
-        "AI chain: {}",
-        pipeline.service_names().join(" → ")
-    );
+    log::info!("AI chain: {}", pipeline.service_names().join(" → "));
 
     // Process each image
     let mut results = Vec::new();
     let total = images.len();
 
     for (i, image_path) in images.iter().enumerate() {
-        log::info!(
-            "[{}/{}] Processing: {}",
-            i + 1,
-            total,
-            image_path.display()
-        );
+        log::info!("[{}/{}] Processing: {}", i + 1, total, image_path.display());
 
         let result = pipeline.process_image(image_path).await;
 

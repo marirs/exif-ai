@@ -133,20 +133,23 @@ pub fn read_exif(path: &Path) -> Result<ExifData> {
     // Standard EXIF fields for display
     data.make = exif.get(ExifTag::Make).and_then(entry_to_string);
     data.model = exif.get(ExifTag::Model).and_then(entry_to_string);
-    data.date_time = exif.get(ExifTag::DateTimeOriginal)
+    data.date_time = exif
+        .get(ExifTag::DateTimeOriginal)
         .or_else(|| exif.get(ExifTag::CreateDate))
         .or_else(|| exif.get(ExifTag::ModifyDate))
         .and_then(entry_to_string);
     data.orientation = exif.get(ExifTag::Orientation).and_then(entry_to_string);
     data.software = exif.get(ExifTag::Software).and_then(entry_to_string);
-    data.exposure_time = exif.get(ExifTag::ExposureTime).and_then(format_rational_frac);
-    data.f_number = exif.get(ExifTag::FNumber).and_then(|v| {
-        format_rational_decimal(v).map(|s| format!("f/{s}"))
-    });
+    data.exposure_time = exif
+        .get(ExifTag::ExposureTime)
+        .and_then(format_rational_frac);
+    data.f_number = exif
+        .get(ExifTag::FNumber)
+        .and_then(|v| format_rational_decimal(v).map(|s| format!("f/{s}")));
     data.iso = exif.get(ExifTag::ISOSpeedRatings).and_then(entry_to_string);
-    data.focal_length = exif.get(ExifTag::FocalLength).and_then(|v| {
-        format_rational_decimal(v).map(|s| format!("{s} mm"))
-    });
+    data.focal_length = exif
+        .get(ExifTag::FocalLength)
+        .and_then(|v| format_rational_decimal(v).map(|s| format!("{s} mm")));
     data.color_space = exif.get(ExifTag::ColorSpace).and_then(|v| {
         v.as_u16().map(|c| match c {
             1 => "sRGB".to_string(),
@@ -154,19 +157,21 @@ pub fn read_exif(path: &Path) -> Result<ExifData> {
             _ => format!("{c}"),
         })
     });
-    data.image_width = exif.get(ExifTag::ExifImageWidth)
+    data.image_width = exif
+        .get(ExifTag::ExifImageWidth)
         .or_else(|| exif.get(ExifTag::ImageWidth))
         .and_then(entry_to_string);
-    data.image_height = exif.get(ExifTag::ExifImageHeight)
+    data.image_height = exif
+        .get(ExifTag::ExifImageHeight)
         .or_else(|| exif.get(ExifTag::ImageHeight))
         .and_then(entry_to_string);
     data.lens_model = exif.get(ExifTag::LensModel).and_then(entry_to_string);
-    data.x_resolution = exif.get(ExifTag::XResolution).and_then(|v| {
-        format_rational_decimal(v).map(|s| format!("{s} dpi"))
-    });
-    data.y_resolution = exif.get(ExifTag::YResolution).and_then(|v| {
-        format_rational_decimal(v).map(|s| format!("{s} dpi"))
-    });
+    data.x_resolution = exif
+        .get(ExifTag::XResolution)
+        .and_then(|v| format_rational_decimal(v).map(|s| format!("{s} dpi")));
+    data.y_resolution = exif
+        .get(ExifTag::YResolution)
+        .and_then(|v| format_rational_decimal(v).map(|s| format!("{s} dpi")));
 
     // Normalize: treat empty/whitespace-only metadata strings as None
     fn normalize(opt: &mut Option<String>) {
@@ -206,7 +211,9 @@ fn decode_user_comment(val: &EntryValue) -> Option<String> {
             let payload = &bytes[8..];
             if prefix == b"ASCII\0\0\0" {
                 let s = String::from_utf8_lossy(payload).trim().to_string();
-                if !s.is_empty() { return Some(s); }
+                if !s.is_empty() {
+                    return Some(s);
+                }
             } else if prefix == b"UNICODE\0" {
                 // UTF-16 encoded
                 return decode_utf16le(payload);
@@ -228,8 +235,11 @@ fn decode_xp_string(val: &EntryValue) -> Option<String> {
 
 /// Decode raw UTF-16LE bytes into a String.
 fn decode_utf16le(bytes: &[u8]) -> Option<String> {
-    if bytes.len() < 2 { return None; }
-    let u16s: Vec<u16> = bytes.chunks_exact(2)
+    if bytes.len() < 2 {
+        return None;
+    }
+    let u16s: Vec<u16> = bytes
+        .chunks_exact(2)
         .map(|c| u16::from_le_bytes([c[0], c[1]]))
         .collect();
     let s = String::from_utf16_lossy(&u16s)
@@ -242,8 +252,12 @@ fn decode_utf16le(bytes: &[u8]) -> Option<String> {
 /// Format a rational EntryValue as a fraction string (e.g. "1/4310").
 fn format_rational_frac(val: &EntryValue) -> Option<String> {
     if let Some(r) = val.as_urational() {
-        if r.1 == 0 { return None; }
-        if r.0 == 0 { return Some("0".to_string()); }
+        if r.1 == 0 {
+            return None;
+        }
+        if r.0 == 0 {
+            return Some("0".to_string());
+        }
         // If denominator is 1, just show the number
         if r.1 == 1 {
             return Some(format!("{}", r.0));
@@ -257,11 +271,16 @@ fn format_rational_frac(val: &EntryValue) -> Option<String> {
 /// Format a rational EntryValue as a clean decimal string (e.g. "1.78").
 fn format_rational_decimal(val: &EntryValue) -> Option<String> {
     if let Some(r) = val.as_urational() {
-        if r.1 == 0 { return None; }
+        if r.1 == 0 {
+            return None;
+        }
         let decimal = r.0 as f64 / r.1 as f64;
         // Remove unnecessary trailing zeros
         let formatted = format!("{:.2}", decimal);
-        let formatted = formatted.trim_end_matches('0').trim_end_matches('.').to_string();
+        let formatted = formatted
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string();
         Some(formatted)
     } else {
         entry_to_string(val)
@@ -291,7 +310,9 @@ mod tests {
     // ── read_exif: real test files (data/) ─────────────────────────────
 
     fn data_path(name: &str) -> std::path::PathBuf {
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data").join(name)
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("data")
+            .join(name)
     }
 
     #[test]
@@ -369,7 +390,10 @@ mod tests {
         assert!((lon - (-94.289)).abs() < 0.01, "lon={lon}");
         assert_eq!(data.iso.as_deref(), Some("32"));
         assert_eq!(data.f_number.as_deref(), Some("f/1.8"));
-        assert_eq!(data.lens_model.as_deref(), Some("iPhone 11 Pro Max back triple camera 4.25mm f/1.8"));
+        assert_eq!(
+            data.lens_model.as_deref(),
+            Some("iPhone 11 Pro Max back triple camera 4.25mm f/1.8")
+        );
     }
 
     // ── ExifData::default ────────────────────────────────────────────

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use img_parts::Bytes;
-use img_parts::jpeg::{Jpeg, JpegSegment};
 use img_parts::ImageEXIF;
+use img_parts::jpeg::{Jpeg, JpegSegment};
 use little_exif::endian::Endian;
 use little_exif::exif_tag::{ExifTag, ExifTagGroup};
 use little_exif::exif_tag_format::ExifTagFormat;
@@ -9,10 +9,10 @@ use little_exif::filetype::FileExtension;
 use little_exif::metadata::Metadata;
 use std::path::{Path, PathBuf};
 
+use super::reader::ExifData;
 use crate::ai::{AiResult, GpsCoords};
 use crate::config::ExifFields;
 use crate::pipeline::ImageKind;
-use super::reader::ExifData;
 
 // EXIF tag IDs for tags not natively supported by little_exif
 const TAG_XP_TITLE: u16 = 0x9C9B;
@@ -53,10 +53,7 @@ pub struct WriteResult {
 
 /// Encode a string as UTF-16LE bytes (used for XP* tags).
 fn encode_utf16le(s: &str) -> Vec<u8> {
-    let mut bytes: Vec<u8> = s
-        .encode_utf16()
-        .flat_map(|c| c.to_le_bytes())
-        .collect();
+    let mut bytes: Vec<u8> = s.encode_utf16().flat_map(|c| c.to_le_bytes()).collect();
     // Null terminator
     bytes.push(0);
     bytes.push(0);
@@ -95,9 +92,7 @@ fn load_existing_metadata(path: &Path) -> Option<Metadata> {
     // Suppress panics from little_exif
     let prev_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
-    let result = std::panic::catch_unwind(move || {
-        Metadata::new_from_path(&path_owned)
-    });
+    let result = std::panic::catch_unwind(move || Metadata::new_from_path(&path_owned));
     std::panic::set_hook(prev_hook);
 
     match result {
@@ -160,7 +155,10 @@ pub fn clear_exif(path: &Path, image_kind: ImageKind) -> Result<()> {
                 let marker = seg.marker();
                 let data = seg.contents();
                 // Remove APP1 XMP segments
-                if marker == 0xE1 && data.len() > 29 && data.starts_with(b"http://ns.adobe.com/xap/1.0/\0") {
+                if marker == 0xE1
+                    && data.len() > 29
+                    && data.starts_with(b"http://ns.adobe.com/xap/1.0/\0")
+                {
                     return false;
                 }
                 // Remove APP13 IPTC segments
@@ -200,7 +198,9 @@ pub fn clear_exif(path: &Path, image_kind: ImageKind) -> Result<()> {
                 .with_context(|| format!("Failed to write {}", path.display()))?;
         }
         ImageKind::Tiff => {
-            anyhow::bail!("Clearing EXIF from TIFF files is not supported — EXIF is integral to the TIFF structure");
+            anyhow::bail!(
+                "Clearing EXIF from TIFF files is not supported — EXIF is integral to the TIFF structure"
+            );
         }
         ImageKind::Sidecar => {
             // Remove the sidecar XMP file if it exists
@@ -315,7 +315,9 @@ pub fn write_exif(
                 result.description_written = true;
                 log::debug!("  Description: {desc}");
             } else {
-                result.skipped_fields.push("description (existing)".to_string());
+                result
+                    .skipped_fields
+                    .push("description (existing)".to_string());
             }
         }
     }
@@ -360,7 +362,9 @@ pub fn write_exif(
                 result.gps_written = true;
                 log::debug!("  GPS: {}, {}", gps.latitude, gps.longitude);
             } else {
-                result.skipped_fields.push("gps (existing coordinates)".to_string());
+                result
+                    .skipped_fields
+                    .push("gps (existing coordinates)".to_string());
             }
         }
     }
@@ -425,8 +429,7 @@ fn write_tags_to_jpeg(
     // Determine if GPS is involved — little_exif drops GPS IFD during its
     // encode (it only encodes IFD0 + ExifIFD), so we must use the raw TIFF
     // injection path whenever GPS data needs to be preserved or written.
-    let gps_involved = existing.has_gps
-        || (fields.write_gps && ai_result.gps.is_some());
+    let gps_involved = existing.has_gps || (fields.write_gps && ai_result.gps.is_some());
 
     // Try the little_exif round-trip first (works when it can parse the EXIF)
     // BUT skip it when GPS is involved to avoid losing GPS IFD.
@@ -508,10 +511,20 @@ fn write_xmp_to_png(
     let mut png = Png::from_bytes(Bytes::from(file_bytes))
         .map_err(|e| anyhow::anyhow!("Failed to parse PNG: {e}"))?;
 
-    let xmp_xml = build_xmp(None,
-        ai_result.title.as_deref().filter(|_| fields.write_title && (existing.title.is_none() || fields.overwrite_existing)),
-        ai_result.description.as_deref().filter(|_| fields.write_description && (existing.description.is_none() || fields.overwrite_existing)),
-        if fields.write_tags && (existing.keywords.is_none() || fields.overwrite_existing) { ai_result.tags.as_ref() } else { None },
+    let xmp_xml = build_xmp(
+        None,
+        ai_result.title.as_deref().filter(|_| {
+            fields.write_title && (existing.title.is_none() || fields.overwrite_existing)
+        }),
+        ai_result.description.as_deref().filter(|_| {
+            fields.write_description
+                && (existing.description.is_none() || fields.overwrite_existing)
+        }),
+        if fields.write_tags && (existing.keywords.is_none() || fields.overwrite_existing) {
+            ai_result.tags.as_ref()
+        } else {
+            None
+        },
     );
 
     // Build iTXt chunk for XMP: keyword "XML:com.adobe.xmp" + null + compression flag + method + lang + translated keyword + text
@@ -536,7 +549,10 @@ fn write_xmp_to_png(
     });
 
     // Insert before IDAT
-    let insert_pos = chunks.iter().position(|c| c.kind() == *b"IDAT").unwrap_or(chunks.len());
+    let insert_pos = chunks
+        .iter()
+        .position(|c| c.kind() == *b"IDAT")
+        .unwrap_or(chunks.len());
     let xmp_chunk = PngChunk::new(*b"iTXt", Bytes::from(chunk_data));
     chunks.insert(insert_pos, xmp_chunk);
 
@@ -561,15 +577,28 @@ fn write_metadata_to_webp(
         .map_err(|e| anyhow::anyhow!("Failed to parse WebP: {e}"))?;
 
     // Build XMP
-    let xmp_xml = build_xmp(None,
-        ai_result.title.as_deref().filter(|_| fields.write_title && (existing.title.is_none() || fields.overwrite_existing)),
-        ai_result.description.as_deref().filter(|_| fields.write_description && (existing.description.is_none() || fields.overwrite_existing)),
-        if fields.write_tags && (existing.keywords.is_none() || fields.overwrite_existing) { ai_result.tags.as_ref() } else { None },
+    let xmp_xml = build_xmp(
+        None,
+        ai_result.title.as_deref().filter(|_| {
+            fields.write_title && (existing.title.is_none() || fields.overwrite_existing)
+        }),
+        ai_result.description.as_deref().filter(|_| {
+            fields.write_description
+                && (existing.description.is_none() || fields.overwrite_existing)
+        }),
+        if fields.write_tags && (existing.keywords.is_none() || fields.overwrite_existing) {
+            ai_result.tags.as_ref()
+        } else {
+            None
+        },
     );
 
     // Set XMP via RIFF chunk (WebP uses "XMP " chunk ID)
     webp.remove_chunks_by_id(*b"XMP ");
-    let xmp_chunk = RiffChunk::new(*b"XMP ", RiffContent::Data(Bytes::from(xmp_xml.into_bytes())));
+    let xmp_chunk = RiffChunk::new(
+        *b"XMP ",
+        RiffContent::Data(Bytes::from(xmp_xml.into_bytes())),
+    );
     webp.chunks_mut().push(xmp_chunk);
 
     // Build minimal EXIF TIFF for title (ImageDescription)
@@ -594,14 +623,14 @@ fn write_metadata_to_webp(
 
 /// Write EXIF tags into a TIFF file using little_exif.
 fn write_tags_to_tiff(path: &Path, new_tags: &[ExifTag]) -> Result<()> {
-    let mut metadata = load_existing_metadata(path)
-        .unwrap_or_else(Metadata::new);
+    let mut metadata = load_existing_metadata(path).unwrap_or_else(Metadata::new);
 
     for tag in new_tags {
         metadata.set_tag(tag.clone());
     }
 
-    metadata.write_to_file(path)
+    metadata
+        .write_to_file(path)
         .map_err(|e| anyhow::anyhow!("Failed to write TIFF EXIF: {e}"))?;
 
     Ok(())
@@ -616,10 +645,20 @@ fn write_sidecar_xmp(
 ) -> Result<PathBuf> {
     let sidecar_path = path.with_extension("xmp");
 
-    let xmp_xml = build_xmp(None,
-        ai_result.title.as_deref().filter(|_| fields.write_title && (existing.title.is_none() || fields.overwrite_existing)),
-        ai_result.description.as_deref().filter(|_| fields.write_description && (existing.description.is_none() || fields.overwrite_existing)),
-        if fields.write_tags && (existing.keywords.is_none() || fields.overwrite_existing) { ai_result.tags.as_ref() } else { None },
+    let xmp_xml = build_xmp(
+        None,
+        ai_result.title.as_deref().filter(|_| {
+            fields.write_title && (existing.title.is_none() || fields.overwrite_existing)
+        }),
+        ai_result.description.as_deref().filter(|_| {
+            fields.write_description
+                && (existing.description.is_none() || fields.overwrite_existing)
+        }),
+        if fields.write_tags && (existing.keywords.is_none() || fields.overwrite_existing) {
+            ai_result.tags.as_ref()
+        } else {
+            None
+        },
     );
 
     std::fs::write(&sidecar_path, xmp_xml).context("Failed to write sidecar XMP file")?;
@@ -632,9 +671,9 @@ fn write_sidecar_xmp(
 /// EXIF segments have marker 0xE1 (APP1) and contents starting with "Exif\0\0".
 fn find_exif_segment_pos(jpeg: &Jpeg) -> Option<usize> {
     const EXIF_PREFIX: &[u8] = b"Exif\0\0";
-    jpeg.segments().iter().position(|s| {
-        s.marker() == 0xE1 && s.contents().starts_with(EXIF_PREFIX)
-    })
+    jpeg.segments()
+        .iter()
+        .position(|s| s.marker() == 0xE1 && s.contents().starts_with(EXIF_PREFIX))
 }
 
 // ============================================================================
@@ -645,9 +684,9 @@ const XMP_HEADER: &[u8] = b"http://ns.adobe.com/xap/1.0/\0";
 
 /// Find the XMP APP1 segment position in a JPEG.
 fn find_xmp_segment_pos(jpeg: &Jpeg) -> Option<usize> {
-    jpeg.segments().iter().position(|s| {
-        s.marker() == 0xE1 && s.contents().starts_with(XMP_HEADER)
-    })
+    jpeg.segments()
+        .iter()
+        .position(|s| s.marker() == 0xE1 && s.contents().starts_with(XMP_HEADER))
 }
 
 /// Update or create XMP metadata in the JPEG with AI-generated fields.
@@ -660,19 +699,31 @@ fn update_xmp_metadata(
 ) {
     // Collect what we need to write
     let title = if fields.write_title {
-        ai_result.title.as_ref()
+        ai_result
+            .title
+            .as_ref()
             .filter(|_| existing.title.is_none() || fields.overwrite_existing)
-    } else { None };
+    } else {
+        None
+    };
 
     let description = if fields.write_description {
-        ai_result.description.as_ref()
+        ai_result
+            .description
+            .as_ref()
             .filter(|_| existing.description.is_none() || fields.overwrite_existing)
-    } else { None };
+    } else {
+        None
+    };
 
     let keywords: Option<&Vec<String>> = if fields.write_tags {
-        ai_result.tags.as_ref()
+        ai_result
+            .tags
+            .as_ref()
             .filter(|_| existing.keywords.is_none() || fields.overwrite_existing)
-    } else { None };
+    } else {
+        None
+    };
 
     if title.is_none() && description.is_none() && keywords.is_none() {
         return;
@@ -687,7 +738,12 @@ fn update_xmp_metadata(
     });
 
     // Build the new XMP
-    let new_xmp = build_xmp(existing_xmp.as_deref(), title.map(|s| s.as_str()), description.map(|s| s.as_str()), keywords);
+    let new_xmp = build_xmp(
+        existing_xmp.as_deref(),
+        title.map(|s| s.as_str()),
+        description.map(|s| s.as_str()),
+        keywords,
+    );
 
     // Build the segment contents: XMP header + XMP data
     let mut contents = Vec::with_capacity(XMP_HEADER.len() + new_xmp.len());
@@ -712,9 +768,9 @@ fn update_xmp_metadata(
 /// Helper to find EXIF segment position from a segments slice.
 fn find_exif_segment_pos_from_segments(segments: &[JpegSegment]) -> Option<usize> {
     const EXIF_PREFIX: &[u8] = b"Exif\0\0";
-    segments.iter().position(|s| {
-        s.marker() == 0xE1 && s.contents().starts_with(EXIF_PREFIX)
-    })
+    segments
+        .iter()
+        .position(|s| s.marker() == 0xE1 && s.contents().starts_with(EXIF_PREFIX))
 }
 
 /// Build XMP XML string, preserving existing XMP content and injecting new fields.
@@ -741,13 +797,17 @@ fn build_xmp(
     if let Some(t) = title {
         let t_esc = xml_escape(t);
         xmp.push_str(&format!("  <dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">{t_esc}</rdf:li></rdf:Alt></dc:title>\n"));
-        xmp.push_str(&format!("  <photoshop:Headline>{t_esc}</photoshop:Headline>\n"));
+        xmp.push_str(&format!(
+            "  <photoshop:Headline>{t_esc}</photoshop:Headline>\n"
+        ));
     }
 
     if let Some(d) = description {
         let d_esc = xml_escape(d);
         xmp.push_str(&format!("  <dc:description><rdf:Alt><rdf:li xml:lang=\"x-default\">{d_esc}</rdf:li></rdf:Alt></dc:description>\n"));
-        xmp.push_str(&format!("  <photoshop:CaptionWriter>AI</photoshop:CaptionWriter>\n"));
+        xmp.push_str(&format!(
+            "  <photoshop:CaptionWriter>AI</photoshop:CaptionWriter>\n"
+        ));
     }
 
     if let Some(kw) = keywords {
@@ -778,7 +838,10 @@ fn inject_into_existing_xmp(
     if !result.contains("xmlns:dc=") {
         if let Some(pos) = result.find("rdf:about=\"\"") {
             let insert_at = pos + "rdf:about=\"\"".len();
-            result.insert_str(insert_at, "\n  xmlns:dc=\"http://purl.org/dc/elements/1.1/\"");
+            result.insert_str(
+                insert_at,
+                "\n  xmlns:dc=\"http://purl.org/dc/elements/1.1/\"",
+            );
         }
     }
 
@@ -786,21 +849,29 @@ fn inject_into_existing_xmp(
     if !result.contains("xmlns:photoshop=") {
         if let Some(pos) = result.find("rdf:about=\"\"") {
             let insert_at = pos + "rdf:about=\"\"".len();
-            result.insert_str(insert_at, "\n  xmlns:photoshop=\"http://ns.adobe.com/photoshop/1.0/\"");
+            result.insert_str(
+                insert_at,
+                "\n  xmlns:photoshop=\"http://ns.adobe.com/photoshop/1.0/\"",
+            );
         }
     }
 
     // Find insertion point: before </rdf:Description>
-    let insert_before = result.find("</rdf:Description>")
-        .or_else(|| result.find("/>").and_then(|p| {
+    let insert_before = result.find("</rdf:Description>").or_else(|| {
+        result.find("/>").and_then(|p| {
             // Check if this is the self-closing rdf:Description
-            if result[..p].rfind('<').map(|s| result[s..].starts_with("<rdf:Description")).unwrap_or(false) {
+            if result[..p]
+                .rfind('<')
+                .map(|s| result[s..].starts_with("<rdf:Description"))
+                .unwrap_or(false)
+            {
                 // Convert self-closing to open/close
                 None
             } else {
                 None
             }
-        }));
+        })
+    });
 
     // Handle self-closing rdf:Description: convert to open/close
     if insert_before.is_none() {
@@ -828,7 +899,9 @@ fn inject_into_existing_xmp(
             new_elements.push_str(&format!("  <dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">{t_esc}</rdf:li></rdf:Alt></dc:title>\n"));
             // Also set photoshop:Headline
             remove_xml_element(&mut result, "photoshop:Headline");
-            new_elements.push_str(&format!("  <photoshop:Headline>{t_esc}</photoshop:Headline>\n"));
+            new_elements.push_str(&format!(
+                "  <photoshop:Headline>{t_esc}</photoshop:Headline>\n"
+            ));
         }
 
         if let Some(d) = description {
@@ -876,10 +949,10 @@ fn remove_xml_element(xml: &mut String, tag: &str) {
 /// Escape special XML characters.
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
-     .replace('<', "&lt;")
-     .replace('>', "&gt;")
-     .replace('"', "&quot;")
-     .replace('\'', "&apos;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 // ============================================================================
@@ -898,33 +971,44 @@ fn update_iptc_metadata(
     fields: &ExifFields,
 ) {
     let title = if fields.write_title {
-        ai_result.title.as_ref()
+        ai_result
+            .title
+            .as_ref()
             .filter(|_| existing.title.is_none() || fields.overwrite_existing)
-    } else { None };
+    } else {
+        None
+    };
 
     let description = if fields.write_description {
-        ai_result.description.as_ref()
+        ai_result
+            .description
+            .as_ref()
             .filter(|_| existing.description.is_none() || fields.overwrite_existing)
-    } else { None };
+    } else {
+        None
+    };
 
     let keywords: Option<&Vec<String>> = if fields.write_tags {
-        ai_result.tags.as_ref()
+        ai_result
+            .tags
+            .as_ref()
             .filter(|_| existing.keywords.is_none() || fields.overwrite_existing)
-    } else { None };
+    } else {
+        None
+    };
 
     if title.is_none() && description.is_none() && keywords.is_none() {
         return;
     }
 
     // Find existing APP13 segment
-    let iptc_pos = jpeg.segments().iter().position(|s| {
-        s.marker() == 0xED && s.contents().starts_with(IPTC_HEADER)
-    });
+    let iptc_pos = jpeg
+        .segments()
+        .iter()
+        .position(|s| s.marker() == 0xED && s.contents().starts_with(IPTC_HEADER));
 
     // Read existing IPTC data (preserve non-AI records)
-    let existing_iptc = iptc_pos.map(|pos| {
-        jpeg.segments()[pos].contents().to_vec()
-    });
+    let existing_iptc = iptc_pos.map(|pos| jpeg.segments()[pos].contents().to_vec());
 
     // Build new IPTC APP13 contents
     let new_contents = build_iptc_contents(
@@ -967,15 +1051,27 @@ fn build_iptc_contents(
             let resource_id = u16::from_be_bytes([data[pos + 4], data[pos + 5]]);
             // Skip pascal string (1 byte length + string + padding to even)
             let pascal_len = data[pos + 6] as usize;
-            let pascal_padded = if (pascal_len + 1) % 2 == 0 { pascal_len + 1 } else { pascal_len + 2 };
+            let pascal_padded = if (pascal_len + 1) % 2 == 0 {
+                pascal_len + 1
+            } else {
+                pascal_len + 2
+            };
             let data_start = pos + 6 + pascal_padded;
-            if data_start + 4 > data.len() { break; }
+            if data_start + 4 > data.len() {
+                break;
+            }
             let data_len = u32::from_be_bytes([
-                data[data_start], data[data_start + 1],
-                data[data_start + 2], data[data_start + 3],
+                data[data_start],
+                data[data_start + 1],
+                data[data_start + 2],
+                data[data_start + 3],
             ]) as usize;
             let resource_end = data_start + 4 + data_len;
-            let resource_end_padded = if data_len % 2 == 0 { resource_end } else { resource_end + 1 };
+            let resource_end_padded = if data_len % 2 == 0 {
+                resource_end
+            } else {
+                resource_end + 1
+            };
 
             if resource_id != 0x0404 {
                 // Preserve this resource
@@ -1042,10 +1138,10 @@ fn build_iptc_contents(
 /// A raw IFD entry to inject into a TIFF, built in the correct endianness.
 struct RawIfdEntry {
     tag_id: u16,
-    data_format: u16,   // TIFF data format (2=ASCII, 1=BYTE, etc.)
+    data_format: u16, // TIFF data format (2=ASCII, 1=BYTE, etc.)
     count: u32,
-    inline_value: [u8; 4],  // value if data fits in 4 bytes
-    extra_data: Option<Vec<u8>>,  // data if > 4 bytes
+    inline_value: [u8; 4],       // value if data fits in 4 bytes
+    extra_data: Option<Vec<u8>>, // data if > 4 bytes
 }
 
 /// Build a raw IFD entry for a string tag (ASCII, format=2).
@@ -1062,7 +1158,13 @@ fn make_string_entry(tag_id: u16, value: &str, _big_endian: bool) -> RawIfdEntry
         ([0u8; 4], Some(data))
     };
 
-    RawIfdEntry { tag_id, data_format: 2, count, inline_value, extra_data }
+    RawIfdEntry {
+        tag_id,
+        data_format: 2,
+        count,
+        inline_value,
+        extra_data,
+    }
 }
 
 /// Build a raw IFD entry for a UTF-16LE byte tag (XP* tags, format=1 BYTE).
@@ -1078,7 +1180,13 @@ fn make_xp_entry(tag_id: u16, value: &str) -> RawIfdEntry {
         ([0u8; 4], Some(data))
     };
 
-    RawIfdEntry { tag_id, data_format: 1, count, inline_value, extra_data }
+    RawIfdEntry {
+        tag_id,
+        data_format: 1,
+        count,
+        inline_value,
+        extra_data,
+    }
 }
 
 /// Build a raw IFD entry for UserComment (UNDEFINED format=7, with ASCII prefix).
@@ -1180,16 +1288,34 @@ fn inject_ai_tags_into_tiff(
     };
     let read_u32 = |data: &[u8], offset: usize| -> u32 {
         if big_endian {
-            u32::from_be_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]])
+            u32::from_be_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ])
         } else {
-            u32::from_le_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]])
+            u32::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ])
         }
     };
     let encode_u16 = |val: u16| -> [u8; 2] {
-        if big_endian { val.to_be_bytes() } else { val.to_le_bytes() }
+        if big_endian {
+            val.to_be_bytes()
+        } else {
+            val.to_le_bytes()
+        }
     };
     let encode_u32 = |val: u32| -> [u8; 4] {
-        if big_endian { val.to_be_bytes() } else { val.to_le_bytes() }
+        if big_endian {
+            val.to_be_bytes()
+        } else {
+            val.to_le_bytes()
+        }
     };
 
     // Parse IFD0
@@ -1210,7 +1336,9 @@ fn inject_ai_tags_into_tiff(
     let ifd0_next = read_u32(original, ifd0_end);
 
     // Find ExifIFD offset from IFD0 (tag 0x8769)
-    let exif_ifd_offset: Option<usize> = ifd0_tag_ids.iter().enumerate()
+    let exif_ifd_offset: Option<usize> = ifd0_tag_ids
+        .iter()
+        .enumerate()
         .find(|&(_, t)| *t == 0x8769)
         .map(|(i, _)| {
             let eo = ifd0_start + i * 12;
@@ -1218,7 +1346,9 @@ fn inject_ai_tags_into_tiff(
         });
 
     // Find existing GPS IFD offset from IFD0 (tag 0x8825)
-    let gps_ifd_offset: Option<usize> = ifd0_tag_ids.iter().enumerate()
+    let gps_ifd_offset: Option<usize> = ifd0_tag_ids
+        .iter()
+        .enumerate()
         .find(|&(_, t)| *t == 0x8825)
         .map(|(i, _)| {
             let eo = ifd0_start + i * 12;
@@ -1245,94 +1375,99 @@ fn inject_ai_tags_into_tiff(
     };
 
     // Parse ExifIFD if it exists
-    let (exif_count, exif_start, _exif_end, exif_tag_ids, exif_next) = if let Some(eo) = exif_ifd_offset {
-        if eo + 2 <= original.len() {
-            let count = read_u16(original, eo) as usize;
-            let start = eo + 2;
-            let end = start + count * 12;
-            if end + 4 <= original.len() {
-                let tags: Vec<u16> = (0..count)
-                    .map(|i| read_u16(original, start + i * 12))
-                    .collect();
-                let next = read_u32(original, end);
-                (count, start, end, tags, next)
+    let (exif_count, exif_start, _exif_end, exif_tag_ids, exif_next) =
+        if let Some(eo) = exif_ifd_offset {
+            if eo + 2 <= original.len() {
+                let count = read_u16(original, eo) as usize;
+                let start = eo + 2;
+                let end = start + count * 12;
+                if end + 4 <= original.len() {
+                    let tags: Vec<u16> = (0..count)
+                        .map(|i| read_u16(original, start + i * 12))
+                        .collect();
+                    let next = read_u32(original, end);
+                    (count, start, end, tags, next)
+                } else {
+                    (0, 0, 0, Vec::new(), 0u32)
+                }
             } else {
                 (0, 0, 0, Vec::new(), 0u32)
             }
         } else {
             (0, 0, 0, Vec::new(), 0u32)
-        }
-    } else {
-        (0, 0, 0, Vec::new(), 0u32)
-    };
+        };
 
     let mut result = original.to_vec();
 
     // === Rebuild ExifIFD at the end (if we have ExifIFD entries to add) ===
-    let new_exif_ifd_start: Option<u32> = if !exif_ifd_entries.is_empty() && exif_ifd_offset.is_some() {
-        let exif_append_count = exif_ifd_entries.iter()
-            .filter(|e| !exif_tag_ids.contains(&e.tag_id)).count();
-        let total = exif_count + exif_append_count;
+    let new_exif_ifd_start: Option<u32> =
+        if !exif_ifd_entries.is_empty() && exif_ifd_offset.is_some() {
+            let exif_append_count = exif_ifd_entries
+                .iter()
+                .filter(|e| !exif_tag_ids.contains(&e.tag_id))
+                .count();
+            let total = exif_count + exif_append_count;
 
-        let start = result.len() as u32;
+            let start = result.len() as u32;
 
-        // Entry count
-        result.extend_from_slice(&encode_u16(total as u16));
+            // Entry count
+            result.extend_from_slice(&encode_u16(total as u16));
 
-        // Copy original ExifIFD entries
-        for i in 0..exif_count {
-            let eo = exif_start + i * 12;
-            result.extend_from_slice(&original[eo..eo + 12]);
-        }
-
-        // Placeholder slots for new entries
-        let append_start = result.len();
-        for _ in 0..exif_append_count {
-            result.extend_from_slice(&[0u8; 12]);
-        }
-
-        // Next-IFD pointer
-        result.extend_from_slice(&encode_u32(exif_next));
-
-        // Append data blobs and build entries
-        let mut data_off = result.len() as u32;
-        let mut raw: Vec<(u16, [u8; 12])> = Vec::new();
-        for entry in &exif_ifd_entries {
-            let mut ib = [0u8; 12];
-            ib[0..2].copy_from_slice(&encode_u16(entry.tag_id));
-            ib[2..4].copy_from_slice(&encode_u16(entry.data_format));
-            ib[4..8].copy_from_slice(&encode_u32(entry.count));
-            if let Some(ref extra) = entry.extra_data {
-                ib[8..12].copy_from_slice(&encode_u32(data_off));
-                result.extend_from_slice(extra);
-                data_off += extra.len() as u32;
-            } else {
-                ib[8..12].copy_from_slice(&entry.inline_value);
+            // Copy original ExifIFD entries
+            for i in 0..exif_count {
+                let eo = exif_start + i * 12;
+                result.extend_from_slice(&original[eo..eo + 12]);
             }
-            raw.push((entry.tag_id, ib));
-        }
 
-        // Fill entries
-        let entries_base = start as usize + 2;
-        let mut slot = 0;
-        for (tag_id, ib) in &raw {
-            if let Some(idx) = exif_tag_ids.iter().position(|&t| t == *tag_id) {
-                let off = entries_base + idx * 12;
-                result[off..off + 12].copy_from_slice(ib);
-            } else {
-                let off = append_start + slot * 12;
-                result[off..off + 12].copy_from_slice(ib);
-                slot += 1;
+            // Placeholder slots for new entries
+            let append_start = result.len();
+            for _ in 0..exif_append_count {
+                result.extend_from_slice(&[0u8; 12]);
             }
-        }
 
-        Some(start)
-    } else {
-        None
-    };
+            // Next-IFD pointer
+            result.extend_from_slice(&encode_u32(exif_next));
+
+            // Append data blobs and build entries
+            let mut data_off = result.len() as u32;
+            let mut raw: Vec<(u16, [u8; 12])> = Vec::new();
+            for entry in &exif_ifd_entries {
+                let mut ib = [0u8; 12];
+                ib[0..2].copy_from_slice(&encode_u16(entry.tag_id));
+                ib[2..4].copy_from_slice(&encode_u16(entry.data_format));
+                ib[4..8].copy_from_slice(&encode_u32(entry.count));
+                if let Some(ref extra) = entry.extra_data {
+                    ib[8..12].copy_from_slice(&encode_u32(data_off));
+                    result.extend_from_slice(extra);
+                    data_off += extra.len() as u32;
+                } else {
+                    ib[8..12].copy_from_slice(&entry.inline_value);
+                }
+                raw.push((entry.tag_id, ib));
+            }
+
+            // Fill entries
+            let entries_base = start as usize + 2;
+            let mut slot = 0;
+            for (tag_id, ib) in &raw {
+                if let Some(idx) = exif_tag_ids.iter().position(|&t| t == *tag_id) {
+                    let off = entries_base + idx * 12;
+                    result[off..off + 12].copy_from_slice(ib);
+                } else {
+                    let off = append_start + slot * 12;
+                    result[off..off + 12].copy_from_slice(ib);
+                    slot += 1;
+                }
+            }
+
+            Some(start)
+        } else {
+            None
+        };
 
     // === Rebuild GPS IFD at the end ===
-    let new_gps_ifd_start: Option<u32> = if !gps_ifd_entries.is_empty() || gps_ifd_offset.is_some() {
+    let new_gps_ifd_start: Option<u32> = if !gps_ifd_entries.is_empty() || gps_ifd_offset.is_some()
+    {
         let start = result.len() as u32;
         let total = gps_count + gps_ifd_entries.len();
 
@@ -1391,8 +1526,10 @@ fn inject_ai_tags_into_tiff(
     let need_gps_pointer = new_gps_ifd_start.is_some() && !ifd0_tag_ids.contains(&0x8825);
 
     // === Rebuild IFD0 at the end ===
-    let ifd0_append_count = ifd0_entries.iter()
-        .filter(|e| !ifd0_tag_ids.contains(&e.tag_id)).count()
+    let ifd0_append_count = ifd0_entries
+        .iter()
+        .filter(|e| !ifd0_tag_ids.contains(&e.tag_id))
+        .count()
         + if need_gps_pointer { 1 } else { 0 };
     let ifd0_total = ifd0_count + ifd0_append_count;
 
@@ -1453,8 +1590,8 @@ fn inject_ai_tags_into_tiff(
         let off = ifd0_append_start + slot * 12;
         let mut ib = [0u8; 12];
         ib[0..2].copy_from_slice(&encode_u16(0x8825)); // GPSInfo tag
-        ib[2..4].copy_from_slice(&encode_u16(4));      // LONG format
-        ib[4..8].copy_from_slice(&encode_u32(1));      // 1 component
+        ib[2..4].copy_from_slice(&encode_u16(4)); // LONG format
+        ib[4..8].copy_from_slice(&encode_u32(1)); // 1 component
         // Offset will be filled in below when we update GPS IFD pointer
         ib[8..12].copy_from_slice(&encode_u32(0));
         result[off..off + 12].copy_from_slice(&ib);
@@ -1582,7 +1719,7 @@ fn make_raw_gps_entries(gps: &GpsCoords) -> Vec<RawIfdEntry> {
     entries
 }
 
-/// Collect GPS tags into the tag list. 
+/// Collect GPS tags into the tag list.
 fn collect_gps_tags(tags: &mut Vec<ExifTag>, gps: &GpsCoords) {
     let lat = gps.latitude;
     let lon = gps.longitude;
@@ -1746,7 +1883,12 @@ mod tests {
 
         let result = write_exif(&path, &ai, &existing, &fields, true, ImageKind::Jpeg).unwrap();
         assert!(!result.description_written);
-        assert!(result.skipped_fields.iter().any(|s| s.contains("description")));
+        assert!(
+            result
+                .skipped_fields
+                .iter()
+                .any(|s| s.contains("description"))
+        );
     }
 
     #[test]
@@ -1776,7 +1918,10 @@ mod tests {
         existing.has_gps = true;
 
         let mut ai = test_ai_result();
-        ai.gps = Some(crate::ai::GpsCoords { latitude: 48.8, longitude: 2.3 });
+        ai.gps = Some(crate::ai::GpsCoords {
+            latitude: 48.8,
+            longitude: 2.3,
+        });
 
         let fields = test_fields();
 
@@ -1901,7 +2046,10 @@ mod tests {
     #[test]
     fn collect_gps_tags_positive_coords() {
         let mut tags = Vec::new();
-        let gps = GpsCoords { latitude: 48.8566, longitude: 2.3522 };
+        let gps = GpsCoords {
+            latitude: 48.8566,
+            longitude: 2.3522,
+        };
         collect_gps_tags(&mut tags, &gps);
         // Should produce 4 tags: lat_ref, lat, lon_ref, lon
         assert_eq!(tags.len(), 4);
@@ -1910,7 +2058,10 @@ mod tests {
     #[test]
     fn collect_gps_tags_negative_coords() {
         let mut tags = Vec::new();
-        let gps = GpsCoords { latitude: -33.8688, longitude: -118.2426 };
+        let gps = GpsCoords {
+            latitude: -33.8688,
+            longitude: -118.2426,
+        };
         collect_gps_tags(&mut tags, &gps);
         assert_eq!(tags.len(), 4);
     }
@@ -1918,7 +2069,9 @@ mod tests {
     // ── Write round-trip tests (real files from data/) ───────────────
 
     fn data_path(name: &str) -> std::path::PathBuf {
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data").join(name)
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("data")
+            .join(name)
     }
 
     fn copy_to_temp(name: &str) -> (TempDir, std::path::PathBuf) {
@@ -1965,7 +2118,10 @@ mod tests {
         assert!(existing.has_gps); // already has GPS
 
         let mut ai = test_ai_result();
-        ai.gps = Some(GpsCoords { latitude: 0.0, longitude: 0.0 });
+        ai.gps = Some(GpsCoords {
+            latitude: 0.0,
+            longitude: 0.0,
+        });
 
         let fields = test_fields();
 
@@ -1980,8 +2136,14 @@ mod tests {
         assert!(after.has_gps, "existing GPS must be preserved");
         let lat = after.gps_latitude.unwrap();
         let lon = after.gps_longitude.unwrap();
-        assert!((lat - 60.991).abs() < 0.01, "GPS lat should be preserved, got lat={lat}");
-        assert!((lon - 24.424).abs() < 0.01, "GPS lon should be preserved, got lon={lon}");
+        assert!(
+            (lat - 60.991).abs() < 0.01,
+            "GPS lat should be preserved, got lat={lat}"
+        );
+        assert!(
+            (lon - 24.424).abs() < 0.01,
+            "GPS lon should be preserved, got lon={lon}"
+        );
     }
 
     #[test]
@@ -1992,7 +2154,10 @@ mod tests {
         assert!(!existing.has_gps); // Jolla has no GPS
 
         let mut ai = test_ai_result();
-        ai.gps = Some(GpsCoords { latitude: 48.8566, longitude: 2.3522 });
+        ai.gps = Some(GpsCoords {
+            latitude: 48.8566,
+            longitude: 2.3522,
+        });
 
         let fields = test_fields();
 
@@ -2033,8 +2198,14 @@ mod tests {
         assert!(after.has_gps, "Nikon GPS must be preserved");
         let lat = after.gps_latitude.unwrap();
         let lon = after.gps_longitude.unwrap();
-        assert!((lat - 43.467).abs() < 0.01, "Nikon GPS lat preserved, got lat={lat}");
-        assert!((lon - 11.885).abs() < 0.01, "Nikon GPS lon preserved, got lon={lon}");
+        assert!(
+            (lat - 43.467).abs() < 0.01,
+            "Nikon GPS lat preserved, got lat={lat}"
+        );
+        assert!(
+            (lon - 11.885).abs() < 0.01,
+            "Nikon GPS lon preserved, got lon={lon}"
+        );
         assert!(after.title.is_some(), "title should be written");
     }
 
@@ -2079,7 +2250,10 @@ mod tests {
         let fields = test_fields();
 
         let result = write_exif(&path, &ai, &existing, &fields, false, ImageKind::Tiff);
-        assert!(result.is_err(), "little_exif should fail on this TIFF variant");
+        assert!(
+            result.is_err(),
+            "little_exif should fail on this TIFF variant"
+        );
 
         // Original file should be unchanged (write failed before modifying)
         let after = crate::exif::read_exif(&path).unwrap();
@@ -2165,7 +2339,10 @@ mod tests {
 
         // File should be smaller (metadata removed) but still valid
         let size_after = std::fs::metadata(&path).unwrap().len();
-        assert!(size_after < size_before, "file should be smaller after clearing EXIF");
+        assert!(
+            size_after < size_before,
+            "file should be smaller after clearing EXIF"
+        );
         assert!(size_after > 0, "file should not be empty");
 
         let bytes = std::fs::read(&path).unwrap();
@@ -2243,7 +2420,10 @@ mod tests {
 
         // Read back — new metadata should be present
         let after = crate::exif::read_exif(&path).unwrap();
-        assert!(after.title.is_some(), "title should be written to cleared file");
+        assert!(
+            after.title.is_some(),
+            "title should be written to cleared file"
+        );
     }
 
     #[test]
@@ -2254,7 +2434,10 @@ mod tests {
         assert!(existing.has_gps); // iPhone has GPS
 
         let mut ai = test_ai_result();
-        ai.gps = Some(GpsCoords { latitude: 0.0, longitude: 0.0 });
+        ai.gps = Some(GpsCoords {
+            latitude: 0.0,
+            longitude: 0.0,
+        });
 
         let fields = test_fields();
 

@@ -8,7 +8,7 @@ use eframe::egui;
 use exif_ai::ai::local::download_model;
 use exif_ai::config::Config;
 use exif_ai::exif::{self, ExifData};
-use exif_ai::pipeline::{collect_images, ImageKind, Pipeline, ProcessResult};
+use exif_ai::pipeline::{ImageKind, Pipeline, ProcessResult, collect_images};
 
 fn load_icon() -> Option<egui::IconData> {
     let png_bytes = include_bytes!("../../assets/icon_256.png");
@@ -140,11 +140,13 @@ impl App {
 
     fn open_files(&mut self) {
         if let Some(paths) = rfd::FileDialog::new()
-            .add_filter("Images", &[
-                "jpg", "jpeg", "png", "webp", "tif", "tiff",
-                "heic", "heif", "avif",
-                "cr3", "cr2", "dng", "nef", "arw", "raf", "orf", "rw2", "pef", "srw",
-            ])
+            .add_filter(
+                "Images",
+                &[
+                    "jpg", "jpeg", "png", "webp", "tif", "tiff", "heic", "heif", "avif", "cr3",
+                    "cr2", "dng", "nef", "arw", "raf", "orf", "rw2", "pef", "srw",
+                ],
+            )
             .pick_files()
         {
             self.add_paths(paths);
@@ -232,23 +234,23 @@ impl App {
         while let Ok(msg) = self.rx.try_recv() {
             match msg {
                 BgMessage::ProcessResult(result) => {
-                    if let Some(entry) = self
-                        .images
-                        .iter_mut()
-                        .find(|e| e.path == result.path)
-                    {
+                    if let Some(entry) = self.images.iter_mut().find(|e| e.path == result.path) {
                         entry.existing_exif = Some(result.existing_exif.clone());
                         entry.result = Some(result);
                     }
                 }
                 BgMessage::BatchDone => {
                     self.processing = false;
-                    let ok = self.images.iter().filter(|e| {
-                        e.result.as_ref().is_some_and(|r| r.error.is_none())
-                    }).count();
-                    let fail = self.images.iter().filter(|e| {
-                        e.result.as_ref().is_some_and(|r| r.error.is_some())
-                    }).count();
+                    let ok = self
+                        .images
+                        .iter()
+                        .filter(|e| e.result.as_ref().is_some_and(|r| r.error.is_none()))
+                        .count();
+                    let fail = self
+                        .images
+                        .iter()
+                        .filter(|e| e.result.as_ref().is_some_and(|r| r.error.is_some()))
+                        .count();
                     self.status = format!("Done — {ok} succeeded, {fail} failed");
                 }
                 BgMessage::DownloadStatus(msg) => {
@@ -262,7 +264,6 @@ impl App {
             }
         }
     }
-
 }
 
 impl eframe::App for App {
@@ -276,7 +277,9 @@ impl eframe::App for App {
 
         // Handle dropped files
         let dropped: Vec<PathBuf> = ctx.input(|i| {
-            i.raw.dropped_files.iter()
+            i.raw
+                .dropped_files
+                .iter()
                 .filter_map(|f| f.path.clone())
                 .collect()
         });
@@ -323,36 +326,54 @@ impl App {
         egui::TopBottomPanel::bottom("toolbar").show(ctx, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                if ui.add_enabled(!self.processing, egui::Button::new("📂 Open Files")).clicked() {
+                if ui
+                    .add_enabled(!self.processing, egui::Button::new("📂 Open Files"))
+                    .clicked()
+                {
                     self.open_files();
                 }
-                if ui.add_enabled(!self.processing, egui::Button::new("📁 Open Folder")).clicked() {
+                if ui
+                    .add_enabled(!self.processing, egui::Button::new("📁 Open Folder"))
+                    .clicked()
+                {
                     self.open_folder();
                 }
                 ui.separator();
 
-                if ui.add_enabled(
-                    !self.processing && !self.images.is_empty(),
-                    egui::Button::new("▶ Process"),
-                ).clicked() {
+                if ui
+                    .add_enabled(
+                        !self.processing && !self.images.is_empty(),
+                        egui::Button::new("▶ Process"),
+                    )
+                    .clicked()
+                {
                     self.dry_run = false;
                     self.start_processing();
                 }
-                if ui.add_enabled(
-                    !self.processing && !self.images.is_empty(),
-                    egui::Button::new("👁 Dry Run"),
-                ).clicked() {
+                if ui
+                    .add_enabled(
+                        !self.processing && !self.images.is_empty(),
+                        egui::Button::new("👁 Dry Run"),
+                    )
+                    .clicked()
+                {
                     self.dry_run = true;
                     self.start_processing();
                 }
 
                 ui.separator();
-                if ui.add_enabled(!self.processing, egui::Button::new("⬇ Download Model")).clicked() {
+                if ui
+                    .add_enabled(!self.processing, egui::Button::new("⬇ Download Model"))
+                    .clicked()
+                {
                     self.start_download();
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add_enabled(!self.images.is_empty(), egui::Button::new("🗑 Clear All")).clicked() {
+                    if ui
+                        .add_enabled(!self.images.is_empty(), egui::Button::new("🗑 Clear All"))
+                        .clicked()
+                    {
                         self.images.clear();
                         self.selected = None;
                         self.status = "Ready — drop images or click Open".into();
@@ -372,9 +393,11 @@ impl App {
 
                 if self.images.is_empty() {
                     ui.centered_and_justified(|ui| {
-                        ui.label(egui::RichText::new("Drop images here\nor click Open")
-                            .size(16.0)
-                            .color(egui::Color32::GRAY));
+                        ui.label(
+                            egui::RichText::new("Drop images here\nor click Open")
+                                .size(16.0)
+                                .color(egui::Color32::GRAY),
+                        );
                     });
                     return;
                 }
@@ -383,7 +406,9 @@ impl App {
                     let mut new_selected = self.selected;
                     for (i, entry) in self.images.iter().enumerate() {
                         let is_selected = self.selected == Some(i);
-                        let filename = entry.path.file_name()
+                        let filename = entry
+                            .path
+                            .file_name()
                             .map(|f| f.to_string_lossy().to_string())
                             .unwrap_or_else(|| entry.path.display().to_string());
 
@@ -417,55 +442,58 @@ impl App {
                     egui::ScrollArea::vertical()
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
-                        // Image preview
-                        ui.horizontal(|ui| {
-                            if let Some(ref tex) = entry.texture {
-                                let size = tex.size_vec2();
-                                let max_h = 300.0;
-                                let scale = (max_h / size.y).min(1.0);
-                                ui.image(egui::load::SizedTexture::new(
-                                    tex.id(),
-                                    size * scale,
-                                ));
-                            }
-
-                            ui.vertical(|ui| {
-                                ui.heading(entry.path.file_name()
-                                    .map(|f| f.to_string_lossy().to_string())
-                                    .unwrap_or_default());
-                                ui.label(format!("Path: {}", entry.path.display()));
-                                if let Some(kind) = entry.kind {
-                                    ui.label(format!("Format: {kind:?}"));
-                                }
-                                ui.add_space(8.0);
-
-                                // Existing EXIF summary
-                                if let Some(ref exif_data) = entry.existing_exif {
-                                    Self::show_existing_exif(ui, exif_data);
-                                }
-                            });
-                        });
-
-                        ui.add_space(12.0);
-                        ui.separator();
-
-                        // AI results
-                        if has_result {
-                            let result = entry.result.as_ref().unwrap();
-                            Self::show_ai_results(ui, result, self.dry_run);
-                        } else if processing {
+                            // Image preview
                             ui.horizontal(|ui| {
-                                ui.spinner();
-                                ui.label("Processing...");
+                                if let Some(ref tex) = entry.texture {
+                                    let size = tex.size_vec2();
+                                    let max_h = 300.0;
+                                    let scale = (max_h / size.y).min(1.0);
+                                    ui.image(egui::load::SizedTexture::new(tex.id(), size * scale));
+                                }
+
+                                ui.vertical(|ui| {
+                                    ui.heading(
+                                        entry
+                                            .path
+                                            .file_name()
+                                            .map(|f| f.to_string_lossy().to_string())
+                                            .unwrap_or_default(),
+                                    );
+                                    ui.label(format!("Path: {}", entry.path.display()));
+                                    if let Some(kind) = entry.kind {
+                                        ui.label(format!("Format: {kind:?}"));
+                                    }
+                                    ui.add_space(8.0);
+
+                                    // Existing EXIF summary
+                                    if let Some(ref exif_data) = entry.existing_exif {
+                                        Self::show_existing_exif(ui, exif_data);
+                                    }
+                                });
                             });
-                        }
-                    });
+
+                            ui.add_space(12.0);
+                            ui.separator();
+
+                            // AI results
+                            if has_result {
+                                let result = entry.result.as_ref().unwrap();
+                                Self::show_ai_results(ui, result, self.dry_run);
+                            } else if processing {
+                                ui.horizontal(|ui| {
+                                    ui.spinner();
+                                    ui.label("Processing...");
+                                });
+                            }
+                        });
                 }
             } else {
                 ui.centered_and_justified(|ui| {
-                    ui.label(egui::RichText::new("Select an image from the list")
-                        .size(18.0)
-                        .color(egui::Color32::GRAY));
+                    ui.label(
+                        egui::RichText::new("Select an image from the list")
+                            .size(18.0)
+                            .color(egui::Color32::GRAY),
+                    );
                 });
             }
         });
@@ -477,30 +505,31 @@ impl App {
         }
 
         // Try loading directly with the image crate (JPEG, PNG, WebP, TIFF)
-        let decoded = std::fs::read(&entry.path).ok().and_then(|bytes| {
-            image::load_from_memory(&bytes).ok()
-        }).or_else(|| {
-            // Fallback: use macOS `sips` to convert HEIC/RAW/AVIF to JPEG for preview
-            #[cfg(target_os = "macos")]
-            {
-                let tmp = std::env::temp_dir().join("exif_ai_preview.jpg");
-                let status = std::process::Command::new("sips")
-                    .args(["-s", "format", "jpeg", "-s", "formatOptions", "70"])
-                    .arg(&entry.path)
-                    .arg("--out")
-                    .arg(&tmp)
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .status();
-                if status.is_ok_and(|s| s.success()) {
-                    if let Ok(bytes) = std::fs::read(&tmp) {
-                        let _ = std::fs::remove_file(&tmp);
-                        return image::load_from_memory(&bytes).ok();
+        let decoded = std::fs::read(&entry.path)
+            .ok()
+            .and_then(|bytes| image::load_from_memory(&bytes).ok())
+            .or_else(|| {
+                // Fallback: use macOS `sips` to convert HEIC/RAW/AVIF to JPEG for preview
+                #[cfg(target_os = "macos")]
+                {
+                    let tmp = std::env::temp_dir().join("exif_ai_preview.jpg");
+                    let status = std::process::Command::new("sips")
+                        .args(["-s", "format", "jpeg", "-s", "formatOptions", "70"])
+                        .arg(&entry.path)
+                        .arg("--out")
+                        .arg(&tmp)
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .status();
+                    if status.is_ok_and(|s| s.success()) {
+                        if let Ok(bytes) = std::fs::read(&tmp) {
+                            let _ = std::fs::remove_file(&tmp);
+                            return image::load_from_memory(&bytes).ok();
+                        }
                     }
                 }
-            }
-            None
-        });
+                None
+            });
 
         if let Some(img) = decoded {
             let img = img.thumbnail(400, 400);
@@ -524,63 +553,92 @@ impl App {
                     .max_height(220.0)
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        let section = |ui: &mut egui::Ui, heading: &str, fields: &[(&str, Option<&str>)]| {
-                            let any = fields.iter().any(|(_, v)| v.is_some());
-                            if !any { return; }
-                            ui.label(egui::RichText::new(heading).small().color(egui::Color32::GRAY));
-                            ui.end_row();
-                            for &(label, ref value) in fields {
-                                if let Some(val) = value {
-                                    ui.label(egui::RichText::new(label).strong());
-                                    ui.label(*val);
-                                    ui.end_row();
+                        let section =
+                            |ui: &mut egui::Ui, heading: &str, fields: &[(&str, Option<&str>)]| {
+                                let any = fields.iter().any(|(_, v)| v.is_some());
+                                if !any {
+                                    return;
                                 }
-                            }
-                        };
+                                ui.label(
+                                    egui::RichText::new(heading)
+                                        .small()
+                                        .color(egui::Color32::GRAY),
+                                );
+                                ui.end_row();
+                                for &(label, ref value) in fields {
+                                    if let Some(val) = value {
+                                        ui.label(egui::RichText::new(label).strong());
+                                        ui.label(*val);
+                                        ui.end_row();
+                                    }
+                                }
+                            };
 
                         egui::Grid::new("existing_exif_grid")
                             .num_columns(2)
                             .spacing([12.0, 4.0])
                             .show(ui, |ui| {
                                 // Camera
-                                section(ui, "CAMERA", &[
-                                    ("Make", data.make.as_deref()),
-                                    ("Model", data.model.as_deref()),
-                                    ("Lens", data.lens_model.as_deref()),
-                                ]);
+                                section(
+                                    ui,
+                                    "CAMERA",
+                                    &[
+                                        ("Make", data.make.as_deref()),
+                                        ("Model", data.model.as_deref()),
+                                        ("Lens", data.lens_model.as_deref()),
+                                    ],
+                                );
 
                                 // Exposure
-                                section(ui, "EXPOSURE", &[
-                                    ("Date", data.date_time.as_deref()),
-                                    ("Exposure", data.exposure_time.as_deref()),
-                                    ("F-Number", data.f_number.as_deref()),
-                                    ("ISO", data.iso.as_deref()),
-                                    ("Focal Length", data.focal_length.as_deref()),
-                                ]);
+                                section(
+                                    ui,
+                                    "EXPOSURE",
+                                    &[
+                                        ("Date", data.date_time.as_deref()),
+                                        ("Exposure", data.exposure_time.as_deref()),
+                                        ("F-Number", data.f_number.as_deref()),
+                                        ("ISO", data.iso.as_deref()),
+                                        ("Focal Length", data.focal_length.as_deref()),
+                                    ],
+                                );
 
                                 // Image
-                                section(ui, "IMAGE", &[
-                                    ("Width", data.image_width.as_deref()),
-                                    ("Height", data.image_height.as_deref()),
-                                    ("Orientation", data.orientation.as_deref()),
-                                    ("Color Space", data.color_space.as_deref()),
-                                    ("X Resolution", data.x_resolution.as_deref()),
-                                    ("Y Resolution", data.y_resolution.as_deref()),
-                                    ("Software", data.software.as_deref()),
-                                ]);
+                                section(
+                                    ui,
+                                    "IMAGE",
+                                    &[
+                                        ("Width", data.image_width.as_deref()),
+                                        ("Height", data.image_height.as_deref()),
+                                        ("Orientation", data.orientation.as_deref()),
+                                        ("Color Space", data.color_space.as_deref()),
+                                        ("X Resolution", data.x_resolution.as_deref()),
+                                        ("Y Resolution", data.y_resolution.as_deref()),
+                                        ("Software", data.software.as_deref()),
+                                    ],
+                                );
 
                                 // Metadata (IPTC / XMP fields)
-                                section(ui, "METADATA", &[
-                                    ("Title", data.title.as_deref()),
-                                    ("Description", data.description.as_deref()),
-                                    ("Keywords", data.keywords.as_deref()),
-                                    ("Subject", data.subject.as_deref()),
-                                ]);
+                                section(
+                                    ui,
+                                    "METADATA",
+                                    &[
+                                        ("Title", data.title.as_deref()),
+                                        ("Description", data.description.as_deref()),
+                                        ("Keywords", data.keywords.as_deref()),
+                                        ("Subject", data.subject.as_deref()),
+                                    ],
+                                );
 
                                 // GPS
                                 if data.has_gps {
-                                    if let (Some(lat), Some(lon)) = (data.gps_latitude, data.gps_longitude) {
-                                        ui.label(egui::RichText::new("GPS").small().color(egui::Color32::GRAY));
+                                    if let (Some(lat), Some(lon)) =
+                                        (data.gps_latitude, data.gps_longitude)
+                                    {
+                                        ui.label(
+                                            egui::RichText::new("GPS")
+                                                .small()
+                                                .color(egui::Color32::GRAY),
+                                        );
                                         ui.end_row();
                                         ui.label(egui::RichText::new("Coordinates").strong());
                                         ui.label(format!("{lat:.6}, {lon:.6}"));
@@ -594,7 +652,10 @@ impl App {
 
     fn show_ai_results(ui: &mut egui::Ui, result: &ProcessResult, dry_run: bool) {
         if let Some(ref err) = result.error {
-            ui.colored_label(egui::Color32::from_rgb(220, 50, 50), format!("Error: {err}"));
+            ui.colored_label(
+                egui::Color32::from_rgb(220, 50, 50),
+                format!("Error: {err}"),
+            );
             return;
         }
 
@@ -758,8 +819,7 @@ impl App {
                 ui.horizontal(|ui| {
                     ui.label("Service order:");
                     ui.label(
-                        egui::RichText::new(self.config.service_order.join(" → "))
-                            .monospace(),
+                        egui::RichText::new(self.config.service_order.join(" → ")).monospace(),
                     );
                 });
                 ui.add_space(8.0);
@@ -782,7 +842,12 @@ impl App {
                         ui.checkbox(&mut self.config.ai_services.openai.enabled, "Enabled");
                         ui.horizontal(|ui| {
                             ui.label("API Key:");
-                            ui.add(egui::TextEdit::singleline(&mut self.config.ai_services.openai.api_key).password(true));
+                            ui.add(
+                                egui::TextEdit::singleline(
+                                    &mut self.config.ai_services.openai.api_key,
+                                )
+                                .password(true),
+                            );
                         });
                         ui.horizontal(|ui| {
                             ui.label("Model:");
@@ -797,7 +862,12 @@ impl App {
                         ui.checkbox(&mut self.config.ai_services.gemini.enabled, "Enabled");
                         ui.horizontal(|ui| {
                             ui.label("API Key:");
-                            ui.add(egui::TextEdit::singleline(&mut self.config.ai_services.gemini.api_key).password(true));
+                            ui.add(
+                                egui::TextEdit::singleline(
+                                    &mut self.config.ai_services.gemini.api_key,
+                                )
+                                .password(true),
+                            );
                         });
                         ui.horizontal(|ui| {
                             ui.label("Model:");
@@ -812,11 +882,18 @@ impl App {
                         ui.checkbox(&mut self.config.ai_services.cloudflare.enabled, "Enabled");
                         ui.horizontal(|ui| {
                             ui.label("Account ID:");
-                            ui.text_edit_singleline(&mut self.config.ai_services.cloudflare.account_id);
+                            ui.text_edit_singleline(
+                                &mut self.config.ai_services.cloudflare.account_id,
+                            );
                         });
                         ui.horizontal(|ui| {
                             ui.label("API Token:");
-                            ui.add(egui::TextEdit::singleline(&mut self.config.ai_services.cloudflare.api_token).password(true));
+                            ui.add(
+                                egui::TextEdit::singleline(
+                                    &mut self.config.ai_services.cloudflare.api_token,
+                                )
+                                .password(true),
+                            );
                         });
                         ui.horizontal(|ui| {
                             ui.label("Model:");
@@ -832,13 +909,31 @@ impl App {
                 ui.heading("EXIF Fields");
                 ui.add_space(4.0);
 
-                ui.checkbox(&mut self.config.exif_fields.write_title, "Write title (ImageDescription + XPTitle)");
-                ui.checkbox(&mut self.config.exif_fields.write_description, "Write description (UserComment + XPComment)");
-                ui.checkbox(&mut self.config.exif_fields.write_tags, "Write tags (XPKeywords)");
-                ui.checkbox(&mut self.config.exif_fields.write_gps, "Write GPS coordinates");
-                ui.checkbox(&mut self.config.exif_fields.write_subject, "Write subject (XPSubject)");
+                ui.checkbox(
+                    &mut self.config.exif_fields.write_title,
+                    "Write title (ImageDescription + XPTitle)",
+                );
+                ui.checkbox(
+                    &mut self.config.exif_fields.write_description,
+                    "Write description (UserComment + XPComment)",
+                );
+                ui.checkbox(
+                    &mut self.config.exif_fields.write_tags,
+                    "Write tags (XPKeywords)",
+                );
+                ui.checkbox(
+                    &mut self.config.exif_fields.write_gps,
+                    "Write GPS coordinates",
+                );
+                ui.checkbox(
+                    &mut self.config.exif_fields.write_subject,
+                    "Write subject (XPSubject)",
+                );
                 ui.add_space(4.0);
-                ui.checkbox(&mut self.config.exif_fields.overwrite_existing, "Overwrite existing values");
+                ui.checkbox(
+                    &mut self.config.exif_fields.overwrite_existing,
+                    "Overwrite existing values",
+                );
 
                 ui.add_space(16.0);
                 ui.separator();
@@ -849,7 +944,10 @@ impl App {
                 ui.add_space(4.0);
 
                 ui.checkbox(&mut self.config.output.dry_run, "Dry run (preview only)");
-                ui.checkbox(&mut self.config.output.backup_originals, "Backup originals (.bak)");
+                ui.checkbox(
+                    &mut self.config.output.backup_originals,
+                    "Backup originals (.bak)",
+                );
             });
         });
     }

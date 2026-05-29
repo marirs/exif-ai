@@ -270,7 +270,10 @@ mod tests {
         assert_eq!(config.ai_services.openai.model, "gpt-4o-mini");
         assert!(!config.ai_services.local.enabled);
         assert!(config.ai_services.local.model_path.is_empty());
-        assert_eq!(config.service_order, vec!["local", "openai", "gemini", "cloudflare"]);
+        assert_eq!(
+            config.service_order,
+            vec!["local", "openai", "gemini", "cloudflare"]
+        );
     }
 
     #[test]
