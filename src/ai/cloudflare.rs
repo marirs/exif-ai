@@ -1,8 +1,12 @@
 use anyhow::{Context, Result};
 use reqwest::Client;
 use serde_json::json;
+use std::time::Duration;
 
 use super::{AiResult, AiService, parse_ai_response};
+
+/// Maximum time to wait for a single AI request before giving up.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub struct CloudflareService {
     account_id: String,
@@ -13,11 +17,15 @@ pub struct CloudflareService {
 
 impl CloudflareService {
     pub fn new(account_id: String, api_token: String, model: String) -> Self {
+        let client = Client::builder()
+            .timeout(REQUEST_TIMEOUT)
+            .build()
+            .unwrap_or_else(|_| Client::new());
         Self {
             account_id,
             api_token,
             model,
-            client: Client::new(),
+            client,
         }
     }
 }

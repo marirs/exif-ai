@@ -1,8 +1,12 @@
 use anyhow::{Context, Result};
 use reqwest::Client;
 use serde_json::json;
+use std::time::Duration;
 
 use super::{AiResult, AiService, parse_ai_response};
+
+/// Maximum time to wait for a single AI request before giving up.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub struct OpenAiService {
     api_key: String,
@@ -12,10 +16,14 @@ pub struct OpenAiService {
 
 impl OpenAiService {
     pub fn new(api_key: String, model: String) -> Self {
+        let client = Client::builder()
+            .timeout(REQUEST_TIMEOUT)
+            .build()
+            .unwrap_or_else(|_| Client::new());
         Self {
             api_key,
             model,
-            client: Client::new(),
+            client,
         }
     }
 }

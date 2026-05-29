@@ -207,11 +207,16 @@ impl Pipeline {
                 return result;
             }
         };
-        let image_base64 =
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_bytes);
-
         // Determine MIME type for AI service
         let mime_type = kind.map(|k| k.mime_type(path)).unwrap_or("image/jpeg");
+
+        // Downscale large images before uploading to cloud services. This cuts
+        // payload size, latency, and memory use; vision models gain no accuracy
+        // from oversized inputs for this task. (The local BLIP service reads the
+        // file directly and is unaffected.)
+        let (upload_bytes, upload_mime) = downscale_for_upload(&image_bytes, mime_type);
+        let image_base64 =
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &upload_bytes);
 
         // Build prompt
         let prompt = ai::build_prompt();
@@ -226,7 +231,7 @@ impl Pipeline {
             let ai_response = if service.supports_file_analysis() {
                 service.analyze_file(path)
             } else {
-                service.analyze(&image_base64, &prompt, mime_type).await
+                service.analyze(&image_base64, &prompt, &upload_mime).await
             };
 
             match ai_response {
@@ -563,8 +568,10 @@ pub fn collect_images(paths: &[PathBuf]) -> Vec<PathBuf> {
                 log::warn!("Skipping unsupported file: {}", path.display());
             }
         } else if path.is_dir() {
+            // Do not follow symlinks: avoids escaping the target tree and
+            // infinite loops on cyclic links.
             for entry in WalkDir::new(path)
-                .follow_links(true)
+                .follow_links(false)
                 .into_iter()
                 .filter_map(|e| e.ok())
             {
@@ -579,6 +586,68 @@ pub fn collect_images(paths: &[PathBuf]) -> Vec<PathBuf> {
     }
 
     images
+}
+
+/// Maximum width/height (in pixels) for images uploaded to cloud AI services.
+/// Larger images are downscaled first to reduce payload size and latency;
+/// vision models gain no accuracy from oversized inputs for this task.
+const MAX_UPLOAD_DIMENSION: u32 = 1536;
+
+/// JPEG quality (1–100) used when re-encoding a downscaled image for upload.
+const UPLOAD_JPEG_QUALITY: u8 = 85;
+
+/// Downscale and re-encode an image for cloud upload if it exceeds
+/// [`MAX_UPLOAD_DIMENSION`] on either side.
+///
+/// Returns the bytes to upload and the MIME type to send with them. If the
+/// image is already small enough, cannot be decoded (e.g. HEIC/RAW, which the
+/// `image` crate does not handle), or re-encoding fails, the original bytes and
+/// MIME type are returned unchanged so the upload still proceeds.
+fn downscale_for_upload(bytes: &[u8], mime: &str) -> (Vec<u8>, String) {
+    use image::ImageEncoder;
+
+    let img = match image::load_from_memory(bytes) {
+        Ok(img) => img,
+        Err(_) => return (bytes.to_vec(), mime.to_string()),
+    };
+
+    if img.width() <= MAX_UPLOAD_DIMENSION && img.height() <= MAX_UPLOAD_DIMENSION {
+        return (bytes.to_vec(), mime.to_string());
+    }
+
+    // Preserve aspect ratio, fitting within MAX_UPLOAD_DIMENSION on both sides.
+    let resized = img.resize(
+        MAX_UPLOAD_DIMENSION,
+        MAX_UPLOAD_DIMENSION,
+        image::imageops::FilterType::Triangle,
+    );
+
+    // JPEG has no alpha channel; flatten to RGB before encoding.
+    let rgb = resized.to_rgb8();
+    let mut out = Vec::new();
+    let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, UPLOAD_JPEG_QUALITY);
+    match encoder.write_image(
+        rgb.as_raw(),
+        rgb.width(),
+        rgb.height(),
+        image::ExtendedColorType::Rgb8,
+    ) {
+        Ok(()) => {
+            log::debug!(
+                "Downscaled image for upload: {}x{} -> {}x{} ({} bytes)",
+                img.width(),
+                img.height(),
+                rgb.width(),
+                rgb.height(),
+                out.len()
+            );
+            (out, "image/jpeg".to_string())
+        }
+        Err(e) => {
+            log::warn!("Failed to re-encode downscaled image ({e}); sending original");
+            (bytes.to_vec(), mime.to_string())
+        }
+    }
 }
 
 /// Check if a file has a supported image extension.

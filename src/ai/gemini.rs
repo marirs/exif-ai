@@ -1,8 +1,12 @@
 use anyhow::{Context, Result};
 use reqwest::Client;
 use serde_json::json;
+use std::time::Duration;
 
 use super::{AiResult, AiService, parse_ai_response};
+
+/// Maximum time to wait for a single AI request before giving up.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub struct GeminiService {
     api_key: String,
@@ -12,10 +16,14 @@ pub struct GeminiService {
 
 impl GeminiService {
     pub fn new(api_key: String, model: String) -> Self {
+        let client = Client::builder()
+            .timeout(REQUEST_TIMEOUT)
+            .build()
+            .unwrap_or_else(|_| Client::new());
         Self {
             api_key,
             model,
-            client: Client::new(),
+            client,
         }
     }
 }
@@ -28,8 +36,8 @@ impl AiService for GeminiService {
 
     async fn analyze(&self, image_base64: &str, prompt: &str, mime_type: &str) -> Result<AiResult> {
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            self.model, self.api_key
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+            self.model
         );
 
         let body = json!({
@@ -54,6 +62,7 @@ impl AiService for GeminiService {
         let resp = self
             .client
             .post(&url)
+            .header("x-goog-api-key", &self.api_key)
             .json(&body)
             .send()
             .await

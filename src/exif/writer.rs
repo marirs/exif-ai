@@ -941,6 +941,20 @@ fn remove_xml_element(xml: &mut String, tag: &str) {
     }
 }
 
+/// Truncate a string to at most `max_bytes` bytes without splitting a
+/// multi-byte UTF-8 character. Returns a valid `&str` slice (possibly shorter
+/// than `max_bytes` so the cut lands on a character boundary).
+fn truncate_utf8(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// Escape special XML characters.
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -1086,31 +1100,28 @@ fn build_iptc_contents(
 
     // Object Name / Title (2:5)
     if let Some(t) = title {
-        let bytes = t.as_bytes();
-        let len = bytes.len().min(64) as u16;
+        let bytes = truncate_utf8(t, 64).as_bytes();
         iptc_data.extend_from_slice(&[0x1C, 0x02, 0x05]);
-        iptc_data.extend_from_slice(&len.to_be_bytes());
-        iptc_data.extend_from_slice(&bytes[..len as usize]);
+        iptc_data.extend_from_slice(&(bytes.len() as u16).to_be_bytes());
+        iptc_data.extend_from_slice(bytes);
     }
 
     // Keywords (2:25) — one record per keyword
     if let Some(kw) = keywords {
         for k in kw {
-            let bytes = k.as_bytes();
-            let len = bytes.len().min(64) as u16;
+            let bytes = truncate_utf8(k, 64).as_bytes();
             iptc_data.extend_from_slice(&[0x1C, 0x02, 0x19]);
-            iptc_data.extend_from_slice(&len.to_be_bytes());
-            iptc_data.extend_from_slice(&bytes[..len as usize]);
+            iptc_data.extend_from_slice(&(bytes.len() as u16).to_be_bytes());
+            iptc_data.extend_from_slice(bytes);
         }
     }
 
     // Caption/Abstract (2:120)
     if let Some(d) = description {
-        let bytes = d.as_bytes();
-        let len = bytes.len().min(2000) as u16;
+        let bytes = truncate_utf8(d, 2000).as_bytes();
         iptc_data.extend_from_slice(&[0x1C, 0x02, 0x78]);
-        iptc_data.extend_from_slice(&len.to_be_bytes());
-        iptc_data.extend_from_slice(&bytes[..len as usize]);
+        iptc_data.extend_from_slice(&(bytes.len() as u16).to_be_bytes());
+        iptc_data.extend_from_slice(bytes);
     }
 
     // Write the IPTC-IIM as 8BIM resource 0x0404
