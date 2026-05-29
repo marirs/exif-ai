@@ -47,7 +47,7 @@ impl AiService for GeminiService {
                 }
             ],
             "generationConfig": {
-                "maxOutputTokens": 1000
+                "maxOutputTokens": 2000
             }
         });
 
@@ -60,7 +60,10 @@ impl AiService for GeminiService {
             .context("Gemini request failed")?;
 
         let status = resp.status();
-        let text = resp.text().await.context("Failed to read Gemini response")?;
+        let text = resp
+            .text()
+            .await
+            .context("Failed to read Gemini response")?;
 
         if !status.is_success() {
             anyhow::bail!("Gemini API error ({}): {}", status, text);

@@ -120,9 +120,7 @@ impl LocalService {
         let mut model = blip::BlipForConditionalGeneration::new(&config, vb)?;
 
         // Encode image through vision model
-        let image_embeds = image
-            .unsqueeze(0)?
-            .apply(model.vision_model())?;
+        let image_embeds = image.unsqueeze(0)?.apply(model.vision_model())?;
 
         // Generate caption tokens autoregressively
         let mut logits_processor =
@@ -165,9 +163,7 @@ impl AiService for LocalService {
         _prompt: &str,
         _mime_type: &str,
     ) -> Result<AiResult> {
-        anyhow::bail!(
-            "LocalService does not support base64 analysis. Use analyze_file() instead."
-        )
+        anyhow::bail!("LocalService does not support base64 analysis. Use analyze_file() instead.")
     }
 
     fn supports_file_analysis(&self) -> bool {
@@ -209,11 +205,9 @@ fn load_image(path: &Path, device: &Device) -> Result<Tensor> {
         .resize_to_fill(384, 384, image::imageops::FilterType::Triangle);
     let img = img.to_rgb8();
     let data = img.into_raw();
-    let data = Tensor::from_vec(data, (384, 384, 3), device)?
-        .permute((2, 0, 1))?;
+    let data = Tensor::from_vec(data, (384, 384, 3), device)?.permute((2, 0, 1))?;
     // OpenAI CLIP normalization
-    let mean =
-        Tensor::new(&[0.48145466f32, 0.4578275, 0.40821073], device)?.reshape((3, 1, 1))?;
+    let mean = Tensor::new(&[0.48145466f32, 0.4578275, 0.40821073], device)?.reshape((3, 1, 1))?;
     let std =
         Tensor::new(&[0.26862954f32, 0.261_302_6, 0.275_777_1], device)?.reshape((3, 1, 1))?;
     let normalized = (data.to_dtype(DType::F32)? / 255.0)?
@@ -229,9 +223,8 @@ fn load_image(path: &Path, device: &Device) -> Result<Tensor> {
 /// "trees and leaves on the ground in a park with a fence" → "Trees and Leaves in Park"
 fn build_title(caption: &str) -> String {
     let strip_words: &[&str] = &[
-        "a", "an", "the", "on", "in", "at", "of", "with", "by", "from",
-        "to", "for", "is", "are", "was", "were", "that", "this", "it",
-        "its", "some", "very", "just",
+        "a", "an", "the", "on", "in", "at", "of", "with", "by", "from", "to", "for", "is", "are",
+        "was", "were", "that", "this", "it", "its", "some", "very", "just",
     ];
 
     let words: Vec<&str> = caption.split_whitespace().collect();
@@ -241,7 +234,9 @@ fn build_title(caption: &str) -> String {
     let meaningful: Vec<&str> = words
         .iter()
         .filter(|w| {
-            let lower = w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
+            let lower = w
+                .trim_matches(|c: char| !c.is_alphanumeric())
+                .to_lowercase();
             lower.len() > 1 && !strip_words.contains(&lower.as_str())
         })
         .copied()
@@ -306,23 +301,24 @@ fn capitalize_first(s: &str) -> String {
 /// Extract keyword tags from a caption using simple NLP heuristics.
 fn extract_tags(caption: &str) -> Vec<String> {
     let stop_words: &[&str] = &[
-        "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-        "have", "has", "had", "do", "does", "did", "will", "would", "could",
-        "should", "may", "might", "shall", "can", "need", "dare", "ought",
-        "used", "to", "of", "in", "for", "on", "with", "at", "by", "from",
-        "as", "into", "through", "during", "before", "after", "above", "below",
-        "between", "out", "off", "over", "under", "again", "further", "then",
-        "once", "here", "there", "when", "where", "why", "how", "all", "both",
-        "each", "few", "more", "most", "other", "some", "such", "no", "nor",
-        "not", "only", "own", "same", "so", "than", "too", "very", "just",
-        "because", "but", "and", "or", "if", "while", "that", "this", "it",
-        "its", "which", "what", "who", "whom", "their", "them", "they", "he",
-        "she", "his", "her", "we", "you", "your", "my", "me", "up", "down",
+        "a", "an", "the", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+        "do", "does", "did", "will", "would", "could", "should", "may", "might", "shall", "can",
+        "need", "dare", "ought", "used", "to", "of", "in", "for", "on", "with", "at", "by", "from",
+        "as", "into", "through", "during", "before", "after", "above", "below", "between", "out",
+        "off", "over", "under", "again", "further", "then", "once", "here", "there", "when",
+        "where", "why", "how", "all", "both", "each", "few", "more", "most", "other", "some",
+        "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "just",
+        "because", "but", "and", "or", "if", "while", "that", "this", "it", "its", "which", "what",
+        "who", "whom", "their", "them", "they", "he", "she", "his", "her", "we", "you", "your",
+        "my", "me", "up", "down",
     ];
 
     caption
         .split_whitespace()
-        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+        .map(|w| {
+            w.trim_matches(|c: char| !c.is_alphanumeric())
+                .to_lowercase()
+        })
         .filter(|w| w.len() > 2 && !stop_words.contains(&w.as_str()))
         .collect::<Vec<_>>()
         .into_iter()
@@ -333,7 +329,7 @@ fn extract_tags(caption: &str) -> Vec<String> {
             acc
         })
         .into_iter()
-        .take(10)
+        .take(50)
         .collect()
 }
 
@@ -386,16 +382,21 @@ pub async fn download_model(model_dir: Option<&Path>) -> Result<PathBuf> {
     if model_dest.exists() {
         log::info!("Model already exists: {}", model_dest.display());
     } else {
-        log::info!("Downloading BLIP model from {} ({})...", MODEL_REPO, MODEL_REVISION);
+        log::info!(
+            "Downloading BLIP model from {} ({})...",
+            MODEL_REPO,
+            MODEL_REVISION
+        );
         let repo = api.repo(hf_hub::Repo::with_revision(
             MODEL_REPO.to_string(),
             hf_hub::RepoType::Model,
             MODEL_REVISION.to_string(),
         ));
-        let downloaded = repo.get(MODEL_FILENAME).await
+        let downloaded = repo
+            .get(MODEL_FILENAME)
+            .await
             .context("Failed to download BLIP model")?;
-        std::fs::copy(&downloaded, &model_dest)
-            .context("Failed to copy model to destination")?;
+        std::fs::copy(&downloaded, &model_dest).context("Failed to copy model to destination")?;
         log::info!("Model saved to: {}", model_dest.display());
     }
 
@@ -405,7 +406,9 @@ pub async fn download_model(model_dir: Option<&Path>) -> Result<PathBuf> {
     } else {
         log::info!("Downloading tokenizer from {}...", MODEL_REPO);
         let repo = api.model(MODEL_REPO.to_string());
-        let downloaded = repo.get(TOKENIZER_FILENAME).await
+        let downloaded = repo
+            .get(TOKENIZER_FILENAME)
+            .await
             .context("Failed to download tokenizer")?;
         std::fs::copy(&downloaded, &tokenizer_dest)
             .context("Failed to copy tokenizer to destination")?;
@@ -428,8 +431,14 @@ mod tests {
             PathBuf::from("/custom/models/model.safetensors"),
             PathBuf::from("/custom/models/tokenizer.json"),
         );
-        assert_eq!(svc.model_path, PathBuf::from("/custom/models/model.safetensors"));
-        assert_eq!(svc.tokenizer_path, PathBuf::from("/custom/models/tokenizer.json"));
+        assert_eq!(
+            svc.model_path,
+            PathBuf::from("/custom/models/model.safetensors")
+        );
+        assert_eq!(
+            svc.tokenizer_path,
+            PathBuf::from("/custom/models/tokenizer.json")
+        );
     }
 
     #[test]
@@ -500,9 +509,15 @@ mod tests {
         let title = build_title(caption);
         assert_ne!(title, caption, "title should differ from raw caption");
         // Title should be shorter
-        assert!(title.len() < caption.len(), "title should be shorter than caption");
+        assert!(
+            title.len() < caption.len(),
+            "title should be shorter than caption"
+        );
         // Title should be capitalized
-        assert!(title.starts_with(|c: char| c.is_uppercase()), "title should start uppercase");
+        assert!(
+            title.starts_with(|c: char| c.is_uppercase()),
+            "title should start uppercase"
+        );
     }
 
     #[test]

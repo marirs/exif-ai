@@ -51,7 +51,7 @@ impl AiService for OpenAiService {
                     ]
                 }
             ],
-            "max_tokens": 1000,
+            "max_tokens": 2000,
             "response_format": { "type": "json_object" }
         });
 
@@ -65,7 +65,10 @@ impl AiService for OpenAiService {
             .context("OpenAI request failed")?;
 
         let status = resp.status();
-        let text = resp.text().await.context("Failed to read OpenAI response")?;
+        let text = resp
+            .text()
+            .await
+            .context("Failed to read OpenAI response")?;
 
         if !status.is_success() {
             anyhow::bail!("OpenAI API error ({}): {}", status, text);

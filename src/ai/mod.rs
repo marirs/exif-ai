@@ -1,12 +1,12 @@
-mod openai;
-mod gemini;
 mod cloudflare;
+mod gemini;
 pub mod local;
+mod openai;
 
-pub use openai::OpenAiService;
-pub use gemini::GeminiService;
 pub use cloudflare::CloudflareService;
+pub use gemini::GeminiService;
 pub use local::LocalService;
+pub use openai::OpenAiService;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -98,7 +98,7 @@ pub fn build_prompt() -> String {
 {
   "title": "A concise, SEO-optimized title for this image (max 60 characters)",
   "description": "An engaging SEO meta description of this image (max 254 characters)",
-  "tags": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
+  "tags": ["keyword1", "keyword2", "keyword3", "..."],
   "gps": { "latitude": 0.0, "longitude": 0.0 },
   "subject": ["identified subject 1", "identified subject 2"]
 }
@@ -106,7 +106,7 @@ pub fn build_prompt() -> String {
 Rules:
 - "title": A short, catchy SEO title. Max 60 characters. Think of it as a headline.
 - "description": A detailed, descriptive paragraph about the image content, scene, mood, colors, and context. Write it as a full sentence or two, like an image caption in a magazine. Max 254 characters.
-- "tags": 5-10 relevant SEO keywords/tags for the image.
+- "tags": Provide between 20 and 50 relevant SEO keywords/tags for the image. Aim for at least 20. Cover the main subject, secondary objects, setting/location, colors, mood/atmosphere, style, composition, lighting, and likely search terms a stock-photo buyer would use. Use single words or short phrases, all lowercase, no duplicates. Only include tags that genuinely apply to the image — do not invent unrelated keywords to reach the count.
 - "gps": If you can identify a specific, well-known location in the image, provide GPS coordinates. If unsure or the location is not identifiable, set to null.
 - "subject": If you can identify specific known people, bird species, animal species, landmarks, or other notable subjects, list them. If none are identifiable, set to null.
 
@@ -244,8 +244,14 @@ fn fix_unquoted_values(text: &str) -> String {
 
             // Check if next char starts an unquoted string value
             if let Some(&next) = chars.peek() {
-                if next != '"' && next != '{' && next != '[' && next != 'n'
-                    && next != 't' && next != 'f' && !next.is_ascii_digit() && next != '-'
+                if next != '"'
+                    && next != '{'
+                    && next != '['
+                    && next != 'n'
+                    && next != 't'
+                    && next != 'f'
+                    && !next.is_ascii_digit()
+                    && next != '-'
                 {
                     // Likely an unquoted string — collect until , or } or newline
                     let mut value = String::new();
@@ -326,7 +332,10 @@ fn value_to_ai_result(val: &serde_json::Value) -> Option<AiResult> {
         found_any = true;
     }
     if let Some(arr) = obj.get("tags").and_then(|v| v.as_array()) {
-        let tags: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+        let tags: Vec<String> = arr
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
         if !tags.is_empty() {
             result.tags = Some(tags);
             found_any = true;
@@ -338,13 +347,19 @@ fn value_to_ai_result(val: &serde_json::Value) -> Option<AiResult> {
             gps_obj.get("longitude").and_then(|v| v.as_f64()),
         ) {
             if lat != 0.0 || lon != 0.0 {
-                result.gps = Some(GpsCoords { latitude: lat, longitude: lon });
+                result.gps = Some(GpsCoords {
+                    latitude: lat,
+                    longitude: lon,
+                });
                 found_any = true;
             }
         }
     }
     if let Some(arr) = obj.get("subject").and_then(|v| v.as_array()) {
-        let subjects: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+        let subjects: Vec<String> = arr
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
         if !subjects.is_empty() {
             result.subject = Some(subjects);
             found_any = true;
@@ -386,7 +401,10 @@ mod tests {
 
         let result = parse_ai_response(json).unwrap();
         assert_eq!(result.title.as_deref(), Some("Sunset Beach"));
-        assert_eq!(result.description.as_deref(), Some("A beautiful sunset over the ocean"));
+        assert_eq!(
+            result.description.as_deref(),
+            Some("A beautiful sunset over the ocean")
+        );
         assert_eq!(result.tags.as_ref().unwrap().len(), 3);
         assert!(result.gps.is_some());
         let gps = result.gps.unwrap();
@@ -563,13 +581,16 @@ Hope this helps!"#;
 
     #[test]
     fn value_to_ai_result_full() {
-        let val: serde_json::Value = serde_json::from_str(r#"{
+        let val: serde_json::Value = serde_json::from_str(
+            r#"{
             "title": "Test",
             "description": "Desc",
             "tags": ["a", "b"],
             "gps": {"latitude": 48.8, "longitude": 2.3},
             "subject": ["Eiffel Tower"]
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
 
         let result = value_to_ai_result(&val).unwrap();
         assert_eq!(result.title.as_deref(), Some("Test"));
@@ -586,10 +607,13 @@ Hope this helps!"#;
 
     #[test]
     fn value_to_ai_result_gps_zero_skipped() {
-        let val: serde_json::Value = serde_json::from_str(r#"{
+        let val: serde_json::Value = serde_json::from_str(
+            r#"{
             "title": "Test",
             "gps": {"latitude": 0.0, "longitude": 0.0}
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         let result = value_to_ai_result(&val).unwrap();
         assert!(result.gps.is_none()); // 0,0 is filtered out
     }
