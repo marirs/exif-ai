@@ -328,14 +328,14 @@ fn print_exif_preview(result: &pipeline::ProcessResult) {
     }
 
     // Subject
-    if let Some(ref subjects) = ai.subject {
-        if !subjects.is_empty() {
-            let subj = subjects.join("; ");
-            if result.subject_written {
-                print_new("XPSubject", &subj);
-            } else {
-                print_skipped("XPSubject", "(exists, skipped)");
-            }
+    if let Some(ref subjects) = ai.subject
+        && !subjects.is_empty()
+    {
+        let subj = subjects.join("; ");
+        if result.subject_written {
+            print_new("XPSubject", &subj);
+        } else {
+            print_skipped("XPSubject", "(exists, skipped)");
         }
     }
 
@@ -361,10 +361,10 @@ const INDENT: &str = "                           ";
 
 /// Print an existing EXIF field row.
 fn print_existing(tag: &str, value: Option<&str>) {
-    if let Some(val) = value {
-        if !val.is_empty() {
-            print_existing_val(tag, val);
-        }
+    if let Some(val) = value
+        && !val.is_empty()
+    {
+        print_existing_val(tag, val);
     }
 }
 

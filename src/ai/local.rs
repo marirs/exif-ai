@@ -274,10 +274,10 @@ fn build_title(caption: &str) -> String {
             title.extend(first.to_uppercase());
             title.extend(chars);
         }
-        if title.len() > 50 {
-            if let Some(pos) = title[..50].rfind(' ') {
-                title.truncate(pos);
-            }
+        if title.len() > 50
+            && let Some(pos) = title[..50].rfind(' ')
+        {
+            title.truncate(pos);
         }
         return title;
     }

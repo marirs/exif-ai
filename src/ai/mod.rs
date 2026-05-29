@@ -179,18 +179,17 @@ fn extract_json_candidates(text: &str) -> Vec<String> {
     }
 
     // Strategy 2: Find outermost { ... }
-    if let Some(start) = text.find('{') {
-        if let Some(end) = text.rfind('}') {
-            if end > start {
-                let extracted = text[start..=end].to_string();
-                candidates.push(extracted.clone());
+    if let Some(start) = text.find('{')
+        && let Some(end) = text.rfind('}')
+        && end > start
+    {
+        let extracted = text[start..=end].to_string();
+        candidates.push(extracted.clone());
 
-                // Strategy 3: Fix unquoted string values (common AI quirk)
-                let fixed = fix_unquoted_values(&extracted);
-                if fixed != extracted {
-                    candidates.push(fixed);
-                }
-            }
+        // Strategy 3: Fix unquoted string values (common AI quirk)
+        let fixed = fix_unquoted_values(&extracted);
+        if fixed != extracted {
+            candidates.push(fixed);
         }
     }
 
@@ -243,34 +242,33 @@ fn fix_unquoted_values(text: &str) -> String {
             result.push_str(&ws);
 
             // Check if next char starts an unquoted string value
-            if let Some(&next) = chars.peek() {
-                if next != '"'
-                    && next != '{'
-                    && next != '['
-                    && next != 'n'
-                    && next != 't'
-                    && next != 'f'
-                    && !next.is_ascii_digit()
-                    && next != '-'
-                {
-                    // Likely an unquoted string — collect until , or } or newline
-                    let mut value = String::new();
-                    while let Some(&vc) = chars.peek() {
-                        if vc == ',' || vc == '}' || vc == '\n' {
-                            break;
-                        }
-                        value.push(vc);
-                        chars.next();
+            if let Some(&next) = chars.peek()
+                && next != '"'
+                && next != '{'
+                && next != '['
+                && next != 'n'
+                && next != 't'
+                && next != 'f'
+                && !next.is_ascii_digit()
+                && next != '-'
+            {
+                // Likely an unquoted string — collect until , or } or newline
+                let mut value = String::new();
+                while let Some(&vc) = chars.peek() {
+                    if vc == ',' || vc == '}' || vc == '\n' {
+                        break;
                     }
-                    let value = value.trim_end();
-                    // Escape any quotes inside the value
-                    let escaped = value.replace('"', "\\\"");
-                    let _ = write!(result, "\"{escaped}\"");
-                    continue;
+                    value.push(vc);
+                    chars.next();
                 }
-                // Check for null/true/false that start with n/t/f
-                // These are valid JSON literals, leave them alone
+                let value = value.trim_end();
+                // Escape any quotes inside the value
+                let escaped = value.replace('"', "\\\"");
+                let _ = write!(result, "\"{escaped}\"");
+                continue;
             }
+            // Check for null/true/false that start with n/t/f
+            // These are valid JSON literals, leave them alone
             continue;
         }
 
@@ -341,19 +339,18 @@ fn value_to_ai_result(val: &serde_json::Value) -> Option<AiResult> {
             found_any = true;
         }
     }
-    if let Some(gps_obj) = obj.get("gps").and_then(|v| v.as_object()) {
-        if let (Some(lat), Some(lon)) = (
+    if let Some(gps_obj) = obj.get("gps").and_then(|v| v.as_object())
+        && let (Some(lat), Some(lon)) = (
             gps_obj.get("latitude").and_then(|v| v.as_f64()),
             gps_obj.get("longitude").and_then(|v| v.as_f64()),
-        ) {
-            if lat != 0.0 || lon != 0.0 {
-                result.gps = Some(GpsCoords {
-                    latitude: lat,
-                    longitude: lon,
-                });
-                found_any = true;
-            }
-        }
+        )
+        && (lat != 0.0 || lon != 0.0)
+    {
+        result.gps = Some(GpsCoords {
+            latitude: lat,
+            longitude: lon,
+        });
+        found_any = true;
     }
     if let Some(arr) = obj.get("subject").and_then(|v| v.as_array()) {
         let subjects: Vec<String> = arr

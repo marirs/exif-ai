@@ -287,85 +287,85 @@ pub fn write_exif(
     let mut new_tags: Vec<ExifTag> = Vec::new();
 
     // Title — ImageDescription (native) + XPTitle (custom)
-    if fields.write_title {
-        if let Some(ref title) = ai_result.title {
-            if existing.title.is_none() || fields.overwrite_existing {
-                new_tags.push(ExifTag::ImageDescription(title.clone()));
-                if let Some(xp_tag) = make_xp_tag(TAG_XP_TITLE, title) {
-                    new_tags.push(xp_tag);
-                }
-                result.title_written = true;
-                log::debug!("  Title: {title}");
-            } else {
-                result.skipped_fields.push("title (existing)".to_string());
+    if fields.write_title
+        && let Some(ref title) = ai_result.title
+    {
+        if existing.title.is_none() || fields.overwrite_existing {
+            new_tags.push(ExifTag::ImageDescription(title.clone()));
+            if let Some(xp_tag) = make_xp_tag(TAG_XP_TITLE, title) {
+                new_tags.push(xp_tag);
             }
+            result.title_written = true;
+            log::debug!("  Title: {title}");
+        } else {
+            result.skipped_fields.push("title (existing)".to_string());
         }
     }
 
     // Description — UserComment (native) + XPComment (custom)
-    if fields.write_description {
-        if let Some(ref desc) = ai_result.description {
-            if existing.description.is_none() || fields.overwrite_existing {
-                let mut comment_bytes = b"ASCII\0\0\0".to_vec();
-                comment_bytes.extend_from_slice(desc.as_bytes());
-                new_tags.push(ExifTag::UserComment(comment_bytes));
-                if let Some(xp_tag) = make_xp_tag(TAG_XP_COMMENT, desc) {
-                    new_tags.push(xp_tag);
-                }
-                result.description_written = true;
-                log::debug!("  Description: {desc}");
-            } else {
-                result
-                    .skipped_fields
-                    .push("description (existing)".to_string());
+    if fields.write_description
+        && let Some(ref desc) = ai_result.description
+    {
+        if existing.description.is_none() || fields.overwrite_existing {
+            let mut comment_bytes = b"ASCII\0\0\0".to_vec();
+            comment_bytes.extend_from_slice(desc.as_bytes());
+            new_tags.push(ExifTag::UserComment(comment_bytes));
+            if let Some(xp_tag) = make_xp_tag(TAG_XP_COMMENT, desc) {
+                new_tags.push(xp_tag);
             }
+            result.description_written = true;
+            log::debug!("  Description: {desc}");
+        } else {
+            result
+                .skipped_fields
+                .push("description (existing)".to_string());
         }
     }
 
     // Tags / Keywords — XPKeywords (custom)
-    if fields.write_tags {
-        if let Some(ref tags) = ai_result.tags {
-            if existing.keywords.is_none() || fields.overwrite_existing {
-                let keywords_str = tags.join("; ");
-                if let Some(xp_tag) = make_xp_tag(TAG_XP_KEYWORDS, &keywords_str) {
-                    new_tags.push(xp_tag);
-                }
-                result.tags_written = true;
-                log::debug!("  Tags: {}", tags.join(", "));
-            } else {
-                result.skipped_fields.push("tags (existing)".to_string());
+    if fields.write_tags
+        && let Some(ref tags) = ai_result.tags
+    {
+        if existing.keywords.is_none() || fields.overwrite_existing {
+            let keywords_str = tags.join("; ");
+            if let Some(xp_tag) = make_xp_tag(TAG_XP_KEYWORDS, &keywords_str) {
+                new_tags.push(xp_tag);
             }
+            result.tags_written = true;
+            log::debug!("  Tags: {}", tags.join(", "));
+        } else {
+            result.skipped_fields.push("tags (existing)".to_string());
         }
     }
 
     // Subject — XPSubject (custom)
-    if fields.write_subject {
-        if let Some(ref subjects) = ai_result.subject {
-            if !subjects.is_empty() && (existing.subject.is_none() || fields.overwrite_existing) {
-                let subject_str = subjects.join("; ");
-                if let Some(xp_tag) = make_xp_tag(TAG_XP_SUBJECT, &subject_str) {
-                    new_tags.push(xp_tag);
-                }
-                result.subject_written = true;
-                log::debug!("  Subject: {}", subjects.join(", "));
-            } else if !subjects.is_empty() {
-                result.skipped_fields.push("subject (existing)".to_string());
+    if fields.write_subject
+        && let Some(ref subjects) = ai_result.subject
+    {
+        if !subjects.is_empty() && (existing.subject.is_none() || fields.overwrite_existing) {
+            let subject_str = subjects.join("; ");
+            if let Some(xp_tag) = make_xp_tag(TAG_XP_SUBJECT, &subject_str) {
+                new_tags.push(xp_tag);
             }
+            result.subject_written = true;
+            log::debug!("  Subject: {}", subjects.join(", "));
+        } else if !subjects.is_empty() {
+            result.skipped_fields.push("subject (existing)".to_string());
         }
     }
 
     // GPS — only if no existing GPS AND AI identified a location
-    if fields.write_gps {
-        if let Some(ref gps) = ai_result.gps {
-            if !existing.has_gps {
-                collect_gps_tags(&mut new_tags, gps);
-                result.gps_written = true;
-                log::debug!("  GPS: {}, {}", gps.latitude, gps.longitude);
-            } else {
-                result
-                    .skipped_fields
-                    .push("gps (existing coordinates)".to_string());
-            }
+    if fields.write_gps
+        && let Some(ref gps) = ai_result.gps
+    {
+        if !existing.has_gps {
+            collect_gps_tags(&mut new_tags, gps);
+            result.gps_written = true;
+            log::debug!("  GPS: {}, {}", gps.latitude, gps.longitude);
+        } else {
+            result
+                .skipped_fields
+                .push("gps (existing coordinates)".to_string());
         }
     }
 
@@ -433,18 +433,16 @@ fn write_tags_to_jpeg(
 
     // Try the little_exif round-trip first (works when it can parse the EXIF)
     // BUT skip it when GPS is involved to avoid losing GPS IFD.
-    if !gps_involved {
-        if let Some(mut metadata) = load_existing_metadata(path) {
-            log::debug!("little_exif parsed existing EXIF, using merge strategy");
-            for tag in new_tags {
-                metadata.set_tag(tag.clone());
-            }
-            let exif_bytes = metadata.as_u8_vec(FileExtension::JPEG);
-            if exif_bytes.len() > JPEG_EXIF_OVERHEAD {
-                new_tiff_data = Some(exif_bytes[JPEG_EXIF_OVERHEAD..].to_vec());
-            } else {
-                new_tiff_data = None;
-            }
+    if !gps_involved && let Some(mut metadata) = load_existing_metadata(path) {
+        log::debug!("little_exif parsed existing EXIF, using merge strategy");
+        for tag in new_tags {
+            metadata.set_tag(tag.clone());
+        }
+        let exif_bytes = metadata.as_u8_vec(FileExtension::JPEG);
+        if exif_bytes.len() > JPEG_EXIF_OVERHEAD {
+            new_tiff_data = Some(exif_bytes[JPEG_EXIF_OVERHEAD..].to_vec());
+        } else {
+            new_tiff_data = None;
         }
     }
 
@@ -602,16 +600,15 @@ fn write_metadata_to_webp(
     webp.chunks_mut().push(xmp_chunk);
 
     // Build minimal EXIF TIFF for title (ImageDescription)
-    if fields.write_title {
-        if let Some(ref title) = ai_result.title {
-            if existing.title.is_none() || fields.overwrite_existing {
-                let mut metadata = Metadata::new();
-                metadata.set_tag(ExifTag::ImageDescription(title.clone()));
-                let exif_bytes = metadata.as_u8_vec(FileExtension::JPEG);
-                if exif_bytes.len() > JPEG_EXIF_OVERHEAD {
-                    webp.set_exif(Some(Bytes::from(exif_bytes[JPEG_EXIF_OVERHEAD..].to_vec())));
-                }
-            }
+    if fields.write_title
+        && let Some(ref title) = ai_result.title
+        && (existing.title.is_none() || fields.overwrite_existing)
+    {
+        let mut metadata = Metadata::new();
+        metadata.set_tag(ExifTag::ImageDescription(title.clone()));
+        let exif_bytes = metadata.as_u8_vec(FileExtension::JPEG);
+        if exif_bytes.len() > JPEG_EXIF_OVERHEAD {
+            webp.set_exif(Some(Bytes::from(exif_bytes[JPEG_EXIF_OVERHEAD..].to_vec())));
         }
     }
 
@@ -805,9 +802,7 @@ fn build_xmp(
     if let Some(d) = description {
         let d_esc = xml_escape(d);
         xmp.push_str(&format!("  <dc:description><rdf:Alt><rdf:li xml:lang=\"x-default\">{d_esc}</rdf:li></rdf:Alt></dc:description>\n"));
-        xmp.push_str(&format!(
-            "  <photoshop:CaptionWriter>AI</photoshop:CaptionWriter>\n"
-        ));
+        xmp.push_str("  <photoshop:CaptionWriter>AI</photoshop:CaptionWriter>\n");
     }
 
     if let Some(kw) = keywords {
@@ -835,25 +830,25 @@ fn inject_into_existing_xmp(
     let mut result = xmp.to_string();
 
     // Ensure dc namespace is declared
-    if !result.contains("xmlns:dc=") {
-        if let Some(pos) = result.find("rdf:about=\"\"") {
-            let insert_at = pos + "rdf:about=\"\"".len();
-            result.insert_str(
-                insert_at,
-                "\n  xmlns:dc=\"http://purl.org/dc/elements/1.1/\"",
-            );
-        }
+    if !result.contains("xmlns:dc=")
+        && let Some(pos) = result.find("rdf:about=\"\"")
+    {
+        let insert_at = pos + "rdf:about=\"\"".len();
+        result.insert_str(
+            insert_at,
+            "\n  xmlns:dc=\"http://purl.org/dc/elements/1.1/\"",
+        );
     }
 
     // Ensure photoshop namespace is declared
-    if !result.contains("xmlns:photoshop=") {
-        if let Some(pos) = result.find("rdf:about=\"\"") {
-            let insert_at = pos + "rdf:about=\"\"".len();
-            result.insert_str(
-                insert_at,
-                "\n  xmlns:photoshop=\"http://ns.adobe.com/photoshop/1.0/\"",
-            );
-        }
+    if !result.contains("xmlns:photoshop=")
+        && let Some(pos) = result.find("rdf:about=\"\"")
+    {
+        let insert_at = pos + "rdf:about=\"\"".len();
+        result.insert_str(
+            insert_at,
+            "\n  xmlns:photoshop=\"http://ns.adobe.com/photoshop/1.0/\"",
+        );
     }
 
     // Find insertion point: before </rdf:Description>
@@ -876,14 +871,14 @@ fn inject_into_existing_xmp(
     // Handle self-closing rdf:Description: convert to open/close
     if insert_before.is_none() {
         // Find the self-closing rdf:Description
-        if let Some(desc_start) = result.find("<rdf:Description") {
-            if let Some(close_pos) = result[desc_start..].find("/>") {
-                let abs_close = desc_start + close_pos;
-                result.replace_range(abs_close..abs_close + 2, ">");
-                // Find </rdf:RDF> and insert </rdf:Description> before it
-                if let Some(rdf_end) = result.find("</rdf:RDF>") {
-                    result.insert_str(rdf_end, "</rdf:Description>\n");
-                }
+        if let Some(desc_start) = result.find("<rdf:Description")
+            && let Some(close_pos) = result[desc_start..].find("/>")
+        {
+            let abs_close = desc_start + close_pos;
+            result.replace_range(abs_close..abs_close + 2, ">");
+            // Find </rdf:RDF> and insert </rdf:Description> before it
+            if let Some(rdf_end) = result.find("</rdf:RDF>") {
+                result.insert_str(rdf_end, "</rdf:Description>\n");
             }
         }
     }
@@ -932,17 +927,17 @@ fn inject_into_existing_xmp(
 fn remove_xml_element(xml: &mut String, tag: &str) {
     let open = format!("<{tag}");
     let close = format!("</{tag}>");
-    if let Some(start) = xml.find(&open) {
-        if let Some(end) = xml[start..].find(&close) {
-            let end_abs = start + end + close.len();
-            // Also remove trailing newline if present
-            let end_abs = if xml.as_bytes().get(end_abs) == Some(&b'\n') {
-                end_abs + 1
-            } else {
-                end_abs
-            };
-            xml.replace_range(start..end_abs, "");
-        }
+    if let Some(start) = xml.find(&open)
+        && let Some(end) = xml[start..].find(&close)
+    {
+        let end_abs = start + end + close.len();
+        // Also remove trailing newline if present
+        let end_abs = if xml.as_bytes().get(end_abs) == Some(&b'\n') {
+            end_abs + 1
+        } else {
+            end_abs
+        };
+        xml.replace_range(start..end_abs, "");
     }
 }
 
@@ -1051,7 +1046,7 @@ fn build_iptc_contents(
             let resource_id = u16::from_be_bytes([data[pos + 4], data[pos + 5]]);
             // Skip pascal string (1 byte length + string + padding to even)
             let pascal_len = data[pos + 6] as usize;
-            let pascal_padded = if (pascal_len + 1) % 2 == 0 {
+            let pascal_padded = if (pascal_len + 1).is_multiple_of(2) {
                 pascal_len + 1
             } else {
                 pascal_len + 2
@@ -1067,7 +1062,7 @@ fn build_iptc_contents(
                 data[data_start + 3],
             ]) as usize;
             let resource_end = data_start + 4 + data_len;
-            let resource_end_padded = if data_len % 2 == 0 {
+            let resource_end_padded = if data_len.is_multiple_of(2) {
                 resource_end
             } else {
                 resource_end + 1
@@ -1228,50 +1223,46 @@ fn inject_ai_tags_into_tiff(
     let mut ifd0_entries: Vec<RawIfdEntry> = Vec::new();
     let mut exif_ifd_entries: Vec<RawIfdEntry> = Vec::new();
 
-    if fields.write_title {
-        if let Some(ref title) = ai_result.title {
-            if existing.title.is_none() || fields.overwrite_existing {
-                ifd0_entries.push(make_string_entry(0x010E, title, big_endian)); // ImageDescription
-                ifd0_entries.push(make_xp_entry(TAG_XP_TITLE, title));
-            }
-        }
+    if fields.write_title
+        && let Some(ref title) = ai_result.title
+        && (existing.title.is_none() || fields.overwrite_existing)
+    {
+        ifd0_entries.push(make_string_entry(0x010E, title, big_endian)); // ImageDescription
+        ifd0_entries.push(make_xp_entry(TAG_XP_TITLE, title));
     }
 
-    if fields.write_description {
-        if let Some(ref desc) = ai_result.description {
-            if existing.description.is_none() || fields.overwrite_existing {
-                exif_ifd_entries.push(make_user_comment_entry(0x9286, desc)); // UserComment → ExifIFD
-                ifd0_entries.push(make_xp_entry(TAG_XP_COMMENT, desc));
-            }
-        }
+    if fields.write_description
+        && let Some(ref desc) = ai_result.description
+        && (existing.description.is_none() || fields.overwrite_existing)
+    {
+        exif_ifd_entries.push(make_user_comment_entry(0x9286, desc)); // UserComment → ExifIFD
+        ifd0_entries.push(make_xp_entry(TAG_XP_COMMENT, desc));
     }
 
-    if fields.write_tags {
-        if let Some(ref tags) = ai_result.tags {
-            if existing.keywords.is_none() || fields.overwrite_existing {
-                let kw = tags.join("; ");
-                ifd0_entries.push(make_xp_entry(TAG_XP_KEYWORDS, &kw));
-            }
-        }
+    if fields.write_tags
+        && let Some(ref tags) = ai_result.tags
+        && (existing.keywords.is_none() || fields.overwrite_existing)
+    {
+        let kw = tags.join("; ");
+        ifd0_entries.push(make_xp_entry(TAG_XP_KEYWORDS, &kw));
     }
 
-    if fields.write_subject {
-        if let Some(ref subjects) = ai_result.subject {
-            if !subjects.is_empty() && (existing.subject.is_none() || fields.overwrite_existing) {
-                let subj = subjects.join("; ");
-                ifd0_entries.push(make_xp_entry(TAG_XP_SUBJECT, &subj));
-            }
-        }
+    if fields.write_subject
+        && let Some(ref subjects) = ai_result.subject
+        && !subjects.is_empty()
+        && (existing.subject.is_none() || fields.overwrite_existing)
+    {
+        let subj = subjects.join("; ");
+        ifd0_entries.push(make_xp_entry(TAG_XP_SUBJECT, &subj));
     }
 
     // Build GPS IFD entries for new GPS coordinates
     let mut gps_ifd_entries: Vec<RawIfdEntry> = Vec::new();
-    if fields.write_gps {
-        if let Some(ref gps) = ai_result.gps {
-            if !existing.has_gps {
-                gps_ifd_entries.extend(make_raw_gps_entries(gps));
-            }
-        }
+    if fields.write_gps
+        && let Some(ref gps) = ai_result.gps
+        && !existing.has_gps
+    {
+        gps_ifd_entries.extend(make_raw_gps_entries(gps));
     }
 
     if ifd0_entries.is_empty() && exif_ifd_entries.is_empty() && gps_ifd_entries.is_empty() {
@@ -1858,8 +1849,10 @@ mod tests {
         let path = dir.path().join("test.jpg");
         std::fs::write(&path, b"fake").unwrap();
 
-        let mut existing = ExifData::default();
-        existing.title = Some("Existing Title".into());
+        let existing = ExifData {
+            title: Some("Existing Title".into()),
+            ..Default::default()
+        };
 
         let ai = test_ai_result();
         let fields = test_fields(); // overwrite_existing = false
@@ -1875,8 +1868,10 @@ mod tests {
         let path = dir.path().join("test.jpg");
         std::fs::write(&path, b"fake").unwrap();
 
-        let mut existing = ExifData::default();
-        existing.description = Some("Existing Desc".into());
+        let existing = ExifData {
+            description: Some("Existing Desc".into()),
+            ..Default::default()
+        };
 
         let ai = test_ai_result();
         let fields = test_fields();
@@ -1897,8 +1892,10 @@ mod tests {
         let path = dir.path().join("test.jpg");
         std::fs::write(&path, b"fake").unwrap();
 
-        let mut existing = ExifData::default();
-        existing.keywords = Some("existing; keywords".into());
+        let existing = ExifData {
+            keywords: Some("existing; keywords".into()),
+            ..Default::default()
+        };
 
         let ai = test_ai_result();
         let fields = test_fields();
@@ -1914,8 +1911,10 @@ mod tests {
         let path = dir.path().join("test.jpg");
         std::fs::write(&path, b"fake").unwrap();
 
-        let mut existing = ExifData::default();
-        existing.has_gps = true;
+        let existing = ExifData {
+            has_gps: true,
+            ..Default::default()
+        };
 
         let mut ai = test_ai_result();
         ai.gps = Some(crate::ai::GpsCoords {
@@ -1938,10 +1937,12 @@ mod tests {
         let path = dir.path().join("test.jpg");
         std::fs::write(&path, b"fake").unwrap();
 
-        let mut existing = ExifData::default();
-        existing.title = Some("Old Title".into());
-        existing.description = Some("Old Desc".into());
-        existing.keywords = Some("old".into());
+        let existing = ExifData {
+            title: Some("Old Title".into()),
+            description: Some("Old Desc".into()),
+            keywords: Some("old".into()),
+            ..Default::default()
+        };
 
         let ai = test_ai_result();
         let mut fields = test_fields();

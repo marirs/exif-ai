@@ -71,21 +71,12 @@ pub struct CloudflareConfig {
 ///
 /// When enabled, runs a BLIP image-captioning model on-device.
 /// No API keys or network access required after the initial model download.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LocalConfig {
     /// Path to the directory containing the model and tokenizer files.
     /// If empty, uses the default cache directory (~/.cache/exif-ai or platform equivalent).
     pub model_path: String,
     pub enabled: bool,
-}
-
-impl Default for LocalConfig {
-    fn default() -> Self {
-        Self {
-            model_path: String::new(),
-            enabled: false,
-        }
-    }
 }
 
 /// Controls which metadata fields are written to images.

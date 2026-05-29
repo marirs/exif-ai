@@ -253,10 +253,11 @@ impl Pipeline {
         }
 
         // Backup original if configured
-        if self.backup_originals && !self.dry_run {
-            if let Err(e) = backup_file(path) {
-                log::warn!("Failed to backup {}: {e}", path.display());
-            }
+        if self.backup_originals
+            && !self.dry_run
+            && let Err(e) = backup_file(path)
+        {
+            log::warn!("Failed to backup {}: {e}", path.display());
         }
 
         // Write metadata based on image kind
@@ -790,7 +791,7 @@ mod tests {
         let jpg = dir.path().join("test.jpg");
         fs::write(&jpg, b"fake").unwrap();
 
-        let images = collect_images(&[jpg.clone()]);
+        let images = collect_images(std::slice::from_ref(&jpg));
         assert_eq!(images.len(), 1);
         assert_eq!(images[0], jpg);
     }

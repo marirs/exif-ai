@@ -102,10 +102,10 @@ pub fn read_exif(path: &Path) -> Result<ExifData> {
     }
 
     // XPTitle fallback
-    if data.title.is_none() {
-        if let Some(val) = exif.get_by_ifd_tag_code(0, TAG_XP_TITLE) {
-            data.title = decode_xp_string(val).or_else(|| entry_to_string(val));
-        }
+    if data.title.is_none()
+        && let Some(val) = exif.get_by_ifd_tag_code(0, TAG_XP_TITLE)
+    {
+        data.title = decode_xp_string(val).or_else(|| entry_to_string(val));
     }
 
     // Description / UserComment
@@ -114,10 +114,10 @@ pub fn read_exif(path: &Path) -> Result<ExifData> {
     }
 
     // XPComment fallback
-    if data.description.is_none() {
-        if let Some(val) = exif.get_by_ifd_tag_code(0, TAG_XP_COMMENT) {
-            data.description = decode_xp_string(val).or_else(|| entry_to_string(val));
-        }
+    if data.description.is_none()
+        && let Some(val) = exif.get_by_ifd_tag_code(0, TAG_XP_COMMENT)
+    {
+        data.description = decode_xp_string(val).or_else(|| entry_to_string(val));
     }
 
     // XPKeywords
@@ -175,10 +175,10 @@ pub fn read_exif(path: &Path) -> Result<ExifData> {
 
     // Normalize: treat empty/whitespace-only metadata strings as None
     fn normalize(opt: &mut Option<String>) {
-        if let Some(s) = opt.as_ref() {
-            if s.trim().is_empty() || s.chars().all(|c| c == '\0' || c.is_whitespace()) {
-                *opt = None;
-            }
+        if let Some(s) = opt.as_ref()
+            && (s.trim().is_empty() || s.chars().all(|c| c == '\0' || c.is_whitespace()))
+        {
+            *opt = None;
         }
     }
     normalize(&mut data.title);
@@ -205,19 +205,19 @@ fn entry_to_string(val: &EntryValue) -> Option<String> {
 
 /// Decode a UserComment EntryValue (UNDEFINED format with 8-byte charset prefix).
 fn decode_user_comment(val: &EntryValue) -> Option<String> {
-    if let EntryValue::Undefined(bytes) = val {
-        if bytes.len() > 8 {
-            let prefix = &bytes[0..8];
-            let payload = &bytes[8..];
-            if prefix == b"ASCII\0\0\0" {
-                let s = String::from_utf8_lossy(payload).trim().to_string();
-                if !s.is_empty() {
-                    return Some(s);
-                }
-            } else if prefix == b"UNICODE\0" {
-                // UTF-16 encoded
-                return decode_utf16le(payload);
+    if let EntryValue::Undefined(bytes) = val
+        && bytes.len() > 8
+    {
+        let prefix = &bytes[0..8];
+        let payload = &bytes[8..];
+        if prefix == b"ASCII\0\0\0" {
+            let s = String::from_utf8_lossy(payload).trim().to_string();
+            if !s.is_empty() {
+                return Some(s);
             }
+        } else if prefix == b"UNICODE\0" {
+            // UTF-16 encoded
+            return decode_utf16le(payload);
         }
     }
     None
@@ -431,10 +431,9 @@ mod tests {
         // Empty file should fail to open as MediaSource or return default
         let result = read_exif(&path);
         // Either an error or a default ExifData is acceptable
-        match result {
-            Ok(data) => assert!(data.title.is_none()),
-            Err(_) => {} // also fine
-        }
+        if let Ok(data) = result {
+            assert!(data.title.is_none());
+        } // an error is also fine
     }
 
     // ── read_exif: file with no EXIF ─────────────────────────────────
@@ -446,15 +445,12 @@ mod tests {
         std::fs::write(&path, b"this is not a jpeg").unwrap();
 
         let result = read_exif(&path);
-        match result {
-            Ok(data) => {
-                // Should return default (no EXIF found)
-                assert!(data.title.is_none());
-                assert!(data.make.is_none());
-                assert!(!data.has_gps);
-            }
-            Err(_) => {} // also acceptable
-        }
+        if let Ok(data) = result {
+            // Should return default (no EXIF found)
+            assert!(data.title.is_none());
+            assert!(data.make.is_none());
+            assert!(!data.has_gps);
+        } // an error is also acceptable
     }
 
     // ── latlng_to_decimal ────────────────────────────────────────────
