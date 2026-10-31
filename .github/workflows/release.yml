@@ -33,7 +33,7 @@ jobs:
             target: aarch64-apple-darwin
             artifact: exif-ai-cli-macos-aarch64
             ext: ""
-          - os: macos-14
+          - os: macos-15
             target: x86_64-apple-darwin
             artifact: exif-ai-cli-macos-x86_64
             ext: ""
@@ -114,7 +114,7 @@ jobs:
             artifact: exif-ai-gui-macos-aarch64
             ext: ""
             bundle: true
-          - os: macos-14
+          - os: macos-15
             target: x86_64-apple-darwin
             artifact: exif-ai-gui-macos-x86_64
             ext: ""
